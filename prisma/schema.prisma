@@ -1,0 +1,33 @@
+// Prisma Schema for LoveEvol Invitation Builder
+// Database: PostgreSQL / Supabase
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  declined
+}
+
+model Invitation {
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String?          @map("user_id") @db.Uuid
+  config       Json             @default("{}") @db.JsonB
+  isPaid       Boolean          @default(false) @map("is_paid")
+  status       InvitationStatus @default(pending)
+  guestAnswers Json             @default("{}") @map("guest_answers") @db.JsonB
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "idx_invitations_user_id")
+  @@index([status], map: "idx_invitations_status")
+  @@index([createdAt(sort: Desc)], map: "idx_invitations_created_at")
+  @@map("invitations")
+}
