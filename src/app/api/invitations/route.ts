@@ -126,19 +126,28 @@ export async function PATCH(req: NextRequest) {
     try {
       const config = (invitation.config || {}) as Record<string, unknown>;
       const tg = (config.telegramNotification as Record<string, string | boolean>) || {};
-      const botToken = process.env.TELEGRAM_BOT_TOKEN || (tg.botToken as string);
-      const chatId = tg.chatId as string;
+      const botToken = (tg.botToken as string) || process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = (tg.chatId as string)?.trim();
 
       if (tg.enabled && chatId && botToken) {
-        const actList = Array.isArray(answers.selectedActivities)
-          ? answers.selectedActivities.join(", ")
-          : "Особенный вечер";
-        const dateText = answers.chosenDate
-          ? `${answers.chosenDate} в ${answers.chosenTime || "удобное время"}`
-          : "На выбор";
-        const note = answers.guestNote ? `\n💬 *Записка:* "${answers.guestNote}"` : "";
+        const host = req.headers.get("host") || "love-evol.vercel.app";
+        const proto = host.includes("localhost") ? "http" : "https";
+        const inviteUrl = `${proto}://${host}/invite/${id}`;
 
-        const text = `🎉 *ОНА СКАЗАЛА ДА!* 💖\n\n📅 *Дата:* ${dateText}\n✨ *План:* ${actList}${note}\n\n💌 Открытка: /invite/${id}`;
+        let text = "";
+        if (answers.stage === "initial_yes") {
+          text = `🎉 *ОНА СКАЗАЛА ДА!* 💖\n\nТвоя половинка только что открыла открытку и нажала «Да»! 🥂✨\nСейчас она выбирает план встречи...\n\n💌 [Открыть приглашение](${inviteUrl})`;
+        } else {
+          const actList = Array.isArray(answers.selectedActivities) && answers.selectedActivities.length > 0
+            ? answers.selectedActivities.join(", ")
+            : "Особенный вечер";
+          const dateText = answers.chosenDate
+            ? `${answers.chosenDate} в ${answers.chosenTime || "удобное время"}`
+            : "На выбор";
+          const note = answers.guestNote ? `\n💬 *Записка:* "${answers.guestNote}"` : "";
+
+          text = `✨ *ПЛАН СВИДАНИЯ ПОДТВЕРЖДЕН!* 💖\n\n📅 *Дата:* ${dateText}\n✨ *План:* ${actList}${note}\n\n💌 [Открыть открытку](${inviteUrl})`;
+        }
 
         fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
@@ -148,7 +157,7 @@ export async function PATCH(req: NextRequest) {
             text,
             parse_mode: "Markdown",
           }),
-        }).catch((err) => console.warn("Telegram notification failed:", err));
+        }).catch((err) => console.warn("Telegram notification dispatch error:", err));
       }
     } catch (e) {
       console.warn("Telegram notification check failed:", e);

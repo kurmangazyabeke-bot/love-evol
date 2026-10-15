@@ -1,8 +1,7 @@
 import { Metadata } from "next";
-import Link from "next/link";
 import { getInvitationById, upsertInvitation } from "@/lib/supabase";
 import { GuestInvitationView } from "@/components/guest/GuestInvitationView";
-import { Heart, Sparkles, Home } from "lucide-react";
+import { GuestInviteClientResolver } from "@/components/guest/GuestInviteClientResolver";
 import { DbInvitation } from "@/types/db";
 
 interface PageProps {
@@ -117,34 +116,7 @@ export default async function GuestInvitePage({ params, searchParams }: PageProp
   const invitation = await resolveInvitation(id, search?.d);
 
   if (!invitation) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-rose-950 via-slate-900 to-purple-950 text-white">
-        <div className="max-w-md w-full bg-white/10 backdrop-blur-md rounded-3xl p-8 border border-white/15 text-center space-y-5 shadow-2xl">
-          <div className="w-16 h-16 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-400/30">
-            <Heart className="w-8 h-8 fill-rose-400/30 stroke-rose-400" />
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight text-white">
-              Приглашение не найдено
-            </h1>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              Возможно, ссылка была изменена или черновик еще не был сохранен в базе данных.
-            </p>
-          </div>
-
-          <div className="pt-2">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white text-sm font-semibold shadow-lg shadow-rose-500/30 transition-all active:scale-95"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Создать свое приглашение</span>
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    return <GuestInviteClientResolver id={id} />;
   }
 
   return <GuestInvitationView invitation={invitation} />;

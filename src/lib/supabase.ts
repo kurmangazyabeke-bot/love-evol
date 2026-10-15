@@ -1,7 +1,72 @@
 import { DbInvitation } from "@/types/db";
+import { put, get, list, del } from "@vercel/blob";
 
 // In-memory fallback repository for local development & preview when Supabase env keys are not yet provided
 const memoryInvitations = new Map<string, DbInvitation>();
+
+async function saveToBlob(record: DbInvitation): Promise<boolean> {
+  try {
+    await put(`invitations/${record.id}.json`, JSON.stringify(record), {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json",
+    });
+    return true;
+  } catch (err) {
+    console.warn("Vercel Blob save fallback:", err);
+    return false;
+  }
+}
+
+async function readFromBlob(id: string): Promise<DbInvitation | null> {
+  try {
+    const res = await get(`invitations/${id}.json`, { access: "public" });
+    if (res && res.statusCode === 200 && res.stream) {
+      const text = await new Response(res.stream).text();
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && parsed.id) {
+        return parsed as DbInvitation;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function listFromBlob(): Promise<DbInvitation[]> {
+  try {
+    const { blobs } = await list({ prefix: "invitations/" });
+    if (!blobs || blobs.length === 0) return [];
+
+    const records = await Promise.all(
+      blobs.map(async (blob) => {
+        try {
+          const res = await fetch(blob.url, { cache: "no-store" });
+          if (res.ok) {
+            return (await res.json()) as DbInvitation;
+          }
+        } catch {}
+        return null;
+      })
+    );
+
+    return records.filter((r): r is DbInvitation => r !== null && typeof r === "object" && !!r.id);
+  } catch (err) {
+    console.warn("Vercel Blob list fallback:", err);
+    return [];
+  }
+}
+
+async function deleteFromBlob(id: string): Promise<boolean> {
+  try {
+    await del(`invitations/${id}.json`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function upsertInvitation(data: {
   id?: string;
@@ -39,15 +104,18 @@ export async function upsertInvitation(data: {
       if (res.ok) {
         const records = await res.json();
         if (records && records[0]) {
-          return records[0] as DbInvitation;
+          const rec = records[0] as DbInvitation;
+          memoryInvitations.set(id, rec);
+          saveToBlob(rec).catch(() => {});
+          return rec;
         }
       }
     } catch (err) {
-      console.warn("Supabase request failed, falling back to local memory store:", err);
+      console.warn("Supabase request failed, falling back to blob/memory store:", err);
     }
   }
 
-  // 2. Fallback in-memory store
+  // 2. Persistent Vercel Blob store & In-memory cache
   const existing = memoryInvitations.get(id);
   const record: DbInvitation = {
     id,
@@ -61,10 +129,14 @@ export async function upsertInvitation(data: {
   };
 
   memoryInvitations.set(id, record);
+  await saveToBlob(record);
   return record;
 }
 
 export async function getInvitationById(id: string): Promise<DbInvitation | null> {
+  const cached = memoryInvitations.get(id);
+  if (cached) return cached;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -83,15 +155,24 @@ export async function getInvitationById(id: string): Promise<DbInvitation | null
       if (res.ok) {
         const records = await res.json();
         if (records && records[0]) {
-          return records[0] as DbInvitation;
+          const rec = records[0] as DbInvitation;
+          memoryInvitations.set(id, rec);
+          return rec;
         }
       }
     } catch (err) {
-      console.warn("Supabase query failed, checking local memory:", err);
+      console.warn("Supabase query failed, checking blob storage:", err);
     }
   }
 
-  return memoryInvitations.get(id) || null;
+  // Check persistent Vercel Blob store
+  const fromBlob = await readFromBlob(id);
+  if (fromBlob) {
+    memoryInvitations.set(id, fromBlob);
+    return fromBlob;
+  }
+
+  return null;
 }
 
 export async function updateGuestAnswers(
@@ -102,6 +183,8 @@ export async function updateGuestAnswers(
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const now = new Date().toISOString();
+
+  const existing = await getInvitationById(id);
 
   if (supabaseUrl && supabaseKey) {
     try {
@@ -126,15 +209,17 @@ export async function updateGuestAnswers(
       if (res.ok) {
         const records = await res.json();
         if (records && records[0]) {
-          return records[0] as DbInvitation;
+          const rec = records[0] as DbInvitation;
+          memoryInvitations.set(id, rec);
+          saveToBlob(rec).catch(() => {});
+          return rec;
         }
       }
     } catch (err) {
-      console.warn("Supabase update answers query failed, checking local memory:", err);
+      console.warn("Supabase update answers query failed, checking blob/memory:", err);
     }
   }
 
-  const existing = memoryInvitations.get(id);
   if (existing) {
     const updated: DbInvitation = {
       ...existing,
@@ -143,6 +228,7 @@ export async function updateGuestAnswers(
       updated_at: now,
     };
     memoryInvitations.set(id, updated);
+    await saveToBlob(updated);
     return updated;
   }
 
@@ -229,6 +315,12 @@ export async function listInvitations(userId?: string | null): Promise<DbInvitat
     }
   }
 
+  // Load from persistent Vercel Blob store
+  const blobList = await listFromBlob();
+  for (const b of blobList) {
+    memoryInvitations.set(b.id, b);
+  }
+
   // Ensure demo seed exists if store is empty so dashboard displays sample result card
   if (memoryInvitations.size === 0) {
     seedDemoInvitations();
@@ -250,23 +342,19 @@ export async function deleteInvitation(id: string): Promise<boolean> {
 
   if (supabaseUrl && supabaseKey) {
     try {
-      const res = await fetch(`${supabaseUrl}/rest/v1/invitations?id=eq.${id}`, {
+      await fetch(`${supabaseUrl}/rest/v1/invitations?id=eq.${id}`, {
         method: "DELETE",
         headers: {
           apikey: supabaseKey,
           Authorization: `Bearer ${supabaseKey}`,
         },
       });
-
-      if (res.ok) {
-        memoryInvitations.delete(id);
-        return true;
-      }
     } catch (err) {
-      console.warn("Supabase delete failed, falling back to local memory:", err);
+      console.warn("Supabase delete failed, falling back to blob/memory:", err);
     }
   }
 
+  await deleteFromBlob(id);
   return memoryInvitations.delete(id);
 }
 

@@ -74,7 +74,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Fallback: Convert to Base64 Data URL so local development works smoothly without cloud keys
+    // 2. Upload to Vercel Blob storage
+    try {
+      const { put } = await import("@vercel/blob");
+      const blobRes = await put(`uploads/${uniqueFileName}`, buffer, {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: file.type,
+      });
+
+      if (blobRes?.url) {
+        return NextResponse.json({
+          success: true,
+          url: blobRes.url,
+          fileName: file.name,
+          size: file.size,
+          mimeType: file.type,
+        });
+      }
+    } catch (blobErr) {
+      console.warn("Vercel Blob upload fallback:", blobErr);
+    }
+
+    // 3. Fallback: Convert to Base64 Data URL so local development works smoothly without cloud keys
     const base64Data = buffer.toString("base64");
     const dataUrl = `data:${file.type};base64,${base64Data}`;
 

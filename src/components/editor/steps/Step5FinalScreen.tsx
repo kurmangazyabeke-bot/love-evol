@@ -21,6 +21,8 @@ import {
   Check,
   Send,
   HelpCircle,
+  ExternalLink,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uploadFile } from "@/lib/api";
@@ -59,6 +61,39 @@ export function Step5FinalScreen() {
   const [isUploadingCelebration, setIsUploadingCelebration] = useState(false);
   const [celebrationTab, setCelebrationTab] = useState<"presets" | "upload" | "url">("presets");
   const [celebrationCategory, setCelebrationCategory] = useState<string>("all");
+  const [testingTg, setTestingTg] = useState(false);
+  const [tgTestResult, setTgTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestTelegram = async () => {
+    if (!telegramNotification.chatId) {
+      setTgTestResult({ success: false, message: "Введите ваш Telegram Chat ID перед отправкой теста" });
+      return;
+    }
+    setTestingTg(true);
+    setTgTestResult(null);
+    try {
+      const res = await fetch("/api/telegram/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId: telegramNotification.chatId,
+          botToken: telegramNotification.botToken,
+        }),
+      });
+      const data = await res.json();
+      setTgTestResult({
+        success: data.success,
+        message: data.message || (data.success ? "Тестовое сообщение отправлено!" : "Ошибка отправки"),
+      });
+    } catch {
+      setTgTestResult({
+        success: false,
+        message: "Ошибка сети при обращении к серверу",
+      });
+    } finally {
+      setTestingTg(false);
+    }
+  };
 
   // Template context
   const selectedActs = activities.filter((a) => a.selected);
@@ -860,19 +895,99 @@ export function Step5FinalScreen() {
         </div>
 
         {telegramNotification.enabled && (
-          <div className="space-y-3 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
+          <div className="space-y-4 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
+            {/* Chat ID Field */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-700">Ваш Telegram Chat ID</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-700">1. Ваш Telegram Chat ID</label>
+                <a
+                  href="https://t.me/userinfobot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-medium text-sky-600 hover:text-sky-700 hover:underline flex items-center gap-1"
+                >
+                  <span>Узнать свой ID в @userinfobot</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
               <input
                 type="text"
                 value={telegramNotification.chatId || ""}
                 onChange={(e) => updateTelegramNotification({ chatId: e.target.value.trim() })}
-                placeholder="Например: 123456789 или @username"
-                className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono"
+                placeholder="Например: 123456789"
+                className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono"
               />
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Узнать свой ID можно за 2 секунды у официального бота <code className="bg-slate-100 px-1 py-0.5 rounded text-sky-600">@userinfobot</code> в Telegram.
+                Откройте бота <code className="bg-slate-100 px-1 py-0.5 rounded text-sky-600 font-mono">@userinfobot</code> в Telegram, нажмите Start и скопируйте число напротив «Id».
               </p>
+            </div>
+
+            {/* Custom Bot Token Field */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-700">
+                  2. Токен бота (Bot Token) <span className="font-normal text-slate-400">(опционально)</span>
+                </label>
+                <a
+                  href="https://t.me/BotFather"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-medium text-slate-500 hover:text-slate-700 hover:underline flex items-center gap-1"
+                >
+                  <span>Создать бота в @BotFather</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <input
+                type="text"
+                value={telegramNotification.botToken || ""}
+                onChange={(e) => updateTelegramNotification({ botToken: e.target.value.trim() })}
+                placeholder="Токен от @BotFather (или оставьте пустым для системного бота)"
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono"
+              />
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Перед отправкой обязательно откройте диалог с вашим ботом и нажмите кнопку <b>/start</b>, чтобы бот получил разрешение присылать вам сообщения!
+              </p>
+            </div>
+
+            {/* Test Send Button & Feedback */}
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={handleTestTelegram}
+                disabled={testingTg || !telegramNotification.chatId}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {testingTg ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+                    <span>Отправка тестового сообщения в Telegram...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5 text-sky-600" />
+                    <span>⚡ Отправить тестовое оповещение</span>
+                  </>
+                )}
+              </button>
+
+              {tgTestResult && (
+                <div
+                  className={cn(
+                    "p-3 rounded-xl border text-xs leading-relaxed animate-in fade-in duration-200 flex items-start gap-2",
+                    tgTestResult.success
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      : "bg-rose-50 border-rose-200 text-rose-800"
+                  )}
+                >
+                  {tgTestResult.success ? (
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <span className="font-medium">{tgTestResult.message}</span>
+                </div>
+              )}
             </div>
           </div>
         )}

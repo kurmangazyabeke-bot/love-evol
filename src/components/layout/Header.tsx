@@ -62,13 +62,54 @@ export function Header({ activeMobileTab = "editor", onTabChange }: HeaderProps)
   };
 
   // Handle Share link copy
-  const handleShare = () => {
-    const id = savedId || "demo-draft";
-    const shareUrl = `${window.location.origin}/invite/${id}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    });
+  const handleShare = async () => {
+    let currentId = savedId || (typeof window !== "undefined" ? localStorage.getItem("love_evol_draft_id") : null);
+
+    // If no draft ID saved yet, automatically save draft now
+    if (!currentId) {
+      setIsSaving(true);
+      try {
+        const configSnapshot = {
+          general: store.general,
+          confirmation: store.confirmation,
+          noButton: store.noButton,
+          activitiesConfig: store.activitiesConfig,
+          activities: store.activities,
+          dateTime: store.dateTime,
+          audio: store.audio,
+          finalScreen: store.finalScreen,
+          quiz: store.quiz,
+          telegramNotification: store.telegramNotification,
+        };
+        const result = await saveDraft(configSnapshot);
+        if (result?.invitation?.id) {
+          currentId = result.invitation.id;
+          setSavedId(currentId);
+          localStorage.setItem("love_evol_draft_id", currentId);
+
+          try {
+            const existingIds = JSON.parse(localStorage.getItem("love_evol_invitation_ids") || "[]");
+            if (!existingIds.includes(currentId)) {
+              existingIds.unshift(currentId);
+              localStorage.setItem("love_evol_invitation_ids", JSON.stringify(existingIds));
+            }
+          } catch {}
+        }
+      } catch (err) {
+        console.error("Auto-save on share failed:", err);
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
+    if (currentId) {
+      const shareUrl = `${window.location.origin}/invite/${currentId}`;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }
+    }
   };
 
   return (

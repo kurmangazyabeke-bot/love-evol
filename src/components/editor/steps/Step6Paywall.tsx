@@ -37,7 +37,12 @@ export function Step6Paywall() {
     quiz,
     telegramNotification,
   } = useInviteStore();
-  const [invitationId, setInvitationId] = useState<string>("");
+  const [invitationId, setInvitationId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("love_evol_draft_id") || "";
+    }
+    return "";
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -94,13 +99,14 @@ export function Step6Paywall() {
     });
   };
 
-  const currentId = invitationId || "my-date";
+  const currentId = invitationId;
   const shareUrl =
-    typeof window !== "undefined"
+    typeof window !== "undefined" && currentId
       ? `${window.location.origin}/invite/${currentId}`
-      : `/invite/${currentId}`;
+      : "";
 
   const handleCopyLink = () => {
+    if (!shareUrl) return;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareUrl).then(() => {
         setCopied(true);
@@ -157,14 +163,22 @@ export function Step6Paywall() {
             </label>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200/90 text-xs font-mono text-slate-700 truncate select-all">
-                {shareUrl}
+              <div className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200/90 text-xs font-mono text-slate-700 truncate select-all flex items-center gap-2">
+                {shareUrl ? (
+                  shareUrl
+                ) : (
+                  <span className="text-slate-400 italic flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                    <span>Синхронизируем базу данных...</span>
+                  </span>
+                )}
               </div>
 
               <button
                 onClick={handleCopyLink}
+                disabled={!shareUrl || isLoading}
                 className={cn(
-                  "px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 cursor-pointer shrink-0",
+                  "px-5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 cursor-pointer shrink-0 disabled:opacity-50 disabled:pointer-events-none",
                   copied
                     ? "bg-emerald-600 text-white"
                     : "bg-slate-900 hover:bg-slate-800 text-white"
@@ -187,15 +201,25 @@ export function Step6Paywall() {
 
           {/* Quick Actions Row */}
           <div className="flex flex-wrap items-center gap-2.5 pt-1 relative z-10">
-            <a
-              href={shareUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 active:scale-95 transition-all"
-            >
-              <span>Открыть страницу гостя</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            {shareUrl ? (
+              <a
+                href={shareUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 active:scale-95 transition-all cursor-pointer"
+              >
+                <span>Открыть страницу гостя</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            ) : (
+              <button
+                disabled
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed"
+              >
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Подготовка ссылки...</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowQr(!showQr)}

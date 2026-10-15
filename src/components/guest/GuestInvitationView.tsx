@@ -219,6 +219,7 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
       await submitGuestAnswers(
         invitation.id,
         {
+          stage: "final_plan",
           selectedActivities: selectedNames,
           chosenDate: dateTime.enabled ? chosenDate : undefined,
           chosenTime: dateTime.enabled ? chosenTime : undefined,
@@ -259,6 +260,16 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
       origin: { y: 0.6 },
       colors: ["#fda4af", "#f43f5e", "#ffedd5", "#fbbf24"],
     });
+
+    // Mгновенное оповещение создателя открытки в Telegram о согласии!
+    submitGuestAnswers(
+      invitation.id,
+      {
+        stage: "initial_yes",
+        acceptedAt: new Date().toISOString(),
+      },
+      "PATCH"
+    ).catch((err) => console.warn("Initial yes notification dispatch error:", err));
   };
 
   const handleContinueFromConfirmation = () => {
