@@ -37,7 +37,7 @@ export type InviteConfigSnapshot = Pick<
 >;
 
 export interface DbInvitation {
-  id: string; // UUID
+  id: string; // UUID or custom slug
   user_id: string | null;
   config: InviteConfigSnapshot | Record<string, unknown>;
   is_paid: boolean;
@@ -50,6 +50,28 @@ export interface DbInvitation {
   updated_at: string;
 }
 
+export interface DbUser {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface AuthSession {
+  token: string;
+  userId: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  user?: DbUser | null;
+  message?: string;
+}
+
 export interface SaveDraftRequest {
   id?: string;
   userId?: string | null;
@@ -59,8 +81,8 @@ export interface SaveDraftRequest {
 
 export interface SaveDraftResponse {
   success: boolean;
-  invitation: DbInvitation;
-  shareUrl: string;
+  invitation?: DbInvitation;
+  shareUrl?: string;
   storageProvider?: string;
   message?: string;
 }

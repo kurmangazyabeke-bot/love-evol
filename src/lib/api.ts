@@ -1,4 +1,4 @@
-import { SaveDraftResponse, DbInvitation } from "@/types/db";
+import { SaveDraftResponse, DbInvitation, DbUser } from "@/types/db";
 
 const CREATOR_ID_KEY = "love_evol_creator_id";
 const INVITATION_IDS_KEY = "love_evol_invitation_ids";
@@ -192,4 +192,72 @@ export async function fetchDbHealth(): Promise<{
   } catch {
     return { ok: false, connected: false, provider: "offline" };
   }
+}
+
+// ============================================================================
+// AUTH API
+// ============================================================================
+
+export async function fetchCurrentUser(): Promise<DbUser | null> {
+  try {
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.authenticated && data.user ? (data.user as DbUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function loginApi(params: {
+  email: string;
+  password: string;
+}): Promise<{ success: boolean; user?: DbUser; message?: string }> {
+  const guestInvitationIds = getStoredInvitationIds();
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: params.email,
+      password: params.password,
+      guestInvitationIds,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || "Ошибка входа в систему");
+  }
+  return data;
+}
+
+export async function registerApi(params: {
+  email: string;
+  password: string;
+  name?: string;
+}): Promise<{ success: boolean; user?: DbUser; message?: string }> {
+  const guestInvitationIds = getStoredInvitationIds();
+  const res = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: params.email,
+      password: params.password,
+      name: params.name,
+      guestInvitationIds,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || "Ошибка регистрации");
+  }
+  return data;
+}
+
+export async function logoutApi(): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch("/api/auth/logout", {
+    method: "POST",
+  });
+  return res.json().catch(() => ({ success: true }));
 }

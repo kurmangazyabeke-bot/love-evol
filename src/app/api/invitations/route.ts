@@ -8,6 +8,7 @@ import {
   deleteInvitation,
 } from "@/lib/supabase";
 import { isVercelPostgresConfigured } from "@/lib/db";
+import { getAuthUserFromRequest } from "@/lib/auth";
 import { SaveDraftRequest, SaveDraftResponse } from "@/types/db";
 
 async function sendTelegramAlert(params: {
@@ -55,9 +56,13 @@ export async function POST(req: NextRequest) {
           .slice(0, 64)
       : undefined;
 
+    // Check if user is authenticated via session cookie
+    const authUser = await getAuthUserFromRequest(req);
+    const effectiveUserId = authUser?.id || body.userId || null;
+
     const invitation = await upsertInvitation({
       id: cleanId || undefined,
-      user_id: body.userId || null,
+      user_id: effectiveUserId,
       config: body.config,
       is_paid: true,
     });
@@ -133,12 +138,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, invitation }, { status: 200 });
     }
 
-    // Privacy-safe listing: if neither userId nor ids was supplied, return empty list unless explicit demo/admin requested
-    if (!userId && (!ids || ids.length === 0)) {
+    // Check authenticated user
+    const authUser = await getAuthUserFromRequest(req);
+    const effectiveUserId = authUser?.id || userId || undefined;
+
+    // Privacy-safe listing: if neither effectiveUserId nor ids was supplied, return empty list
+    if (!effectiveUserId && (!ids || ids.length === 0)) {
       return NextResponse.json({ success: true, invitations: [] }, { status: 200 });
     }
 
-    const invitations = await listInvitations(userId, ids);
+    const invitations = await listInvitations(effectiveUserId, ids);
     return NextResponse.json(
       {
         success: true,

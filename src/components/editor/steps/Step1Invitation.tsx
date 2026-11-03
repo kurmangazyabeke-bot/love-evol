@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import { useInviteStore } from "@/store/useInviteStore";
 import { VIBES, OPENING_ANIMATIONS, CUSTOM_COLOR_PRESETS, VibeCategory, isColorDark } from "@/lib/vibes";
 import { VibeType, OpeningAnimationType, ParticlesType } from "@/types/invite";
@@ -29,6 +29,7 @@ import {
   KeyRound,
   Heart,
   Wand2,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uploadFile } from "@/lib/api";
@@ -57,6 +58,7 @@ export function Step1Invitation() {
   const [vibeCategory, setVibeCategory] = useState<"all" | VibeCategory>("all");
   const [imageTab, setImageTab] = useState<"upload" | "presets" | "url">("presets");
   const [coverCategory, setCoverCategory] = useState<string>("all");
+  const [coverSearch, setCoverSearch] = useState<string>("");
   const [audioTab, setAudioTab] = useState<"record" | "upload" | "presets" | "url">("record");
   const [dragActive, setDragActive] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
@@ -802,90 +804,144 @@ export function Step1Invitation() {
         </div>
 
         {/* SUBTAB A: PRESETS */}
-        {imageTab === "presets" && (
-          <div className="space-y-4 animate-in fade-in duration-200">
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-              <button
-                type="button"
-                onClick={() => setCoverCategory("all")}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
-                  coverCategory === "all"
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        {imageTab === "presets" && (() => {
+          const q = coverSearch.trim().toLowerCase();
+          const filteredItems = COVER_PRESET_CATEGORIES
+            .filter((cat) => coverCategory === "all" || cat.id === coverCategory)
+            .flatMap((cat) => cat.items)
+            .filter((item) => {
+              if (!q) return true;
+              return (
+                item.title.toLowerCase().includes(q) ||
+                item.category.toLowerCase().includes(q) ||
+                (item.tags && item.tags.some((t) => t.toLowerCase().includes(q)))
+              );
+            });
+
+          return (
+            <div className="space-y-3.5 animate-in fade-in duration-200">
+              {/* Search Bar for Stickers */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
+                <input
+                  type="text"
+                  value={coverSearch}
+                  onChange={(e) => setCoverSearch(e.target.value)}
+                  placeholder="Поиск гифок: котик, мишка, поцелуй, пицца, панда, аниме..."
+                  className="w-full pl-10 pr-9 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400 transition-all font-medium"
+                />
+                {coverSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCoverSearch("")}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
-              >
-                <span>✨ Все варианты</span>
-                <span className={cn(
-                  "text-[10px] px-1.5 py-0.2 rounded-full",
-                  coverCategory === "all" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                )}>
-                  {COVER_PRESET_CATEGORIES.reduce((acc, c) => acc + c.items.length, 0)}
-                </span>
-              </button>
-              {COVER_PRESET_CATEGORIES.map((cat) => (
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
                 <button
-                  key={cat.id}
                   type="button"
-                  onClick={() => setCoverCategory(cat.id)}
+                  onClick={() => setCoverCategory("all")}
                   className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
-                    coverCategory === cat.id
-                      ? "bg-rose-500 text-white shadow-xs font-semibold"
+                    "px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
+                    coverCategory === "all"
+                      ? "bg-slate-900 text-white shadow-xs"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   )}
                 >
-                  <span>{cat.name}</span>
-                  <span className={cn(
-                    "text-[10px] px-1.5 py-0.2 rounded-full",
-                    coverCategory === cat.id ? "bg-white/25 text-white" : "bg-slate-200 text-slate-700"
-                  )}>
-                    {cat.items.length}
+                  <span>✨ Все варианты</span>
+                  <span
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full",
+                      coverCategory === "all" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    )}
+                  >
+                    {COVER_PRESET_CATEGORIES.reduce((acc, c) => acc + c.items.length, 0)}
                   </span>
                 </button>
-              ))}
-            </div>
-
-            {/* Presets Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[440px] overflow-y-auto pr-1">
-              {COVER_PRESET_CATEGORIES
-                .filter((cat) => coverCategory === "all" || cat.id === coverCategory)
-                .flatMap((cat) => cat.items)
-                .map((item) => {
-                  const isSelected = general.coverImageUrl === item.url;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => updateGeneral({ coverImageUrl: item.url })}
+                {COVER_PRESET_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setCoverCategory(cat.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
+                      coverCategory === cat.id
+                        ? "bg-rose-500 text-white shadow-xs font-semibold"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    )}
+                  >
+                    <span>{cat.name}</span>
+                    <span
                       className={cn(
-                        "relative rounded-xl overflow-hidden border text-left group transition-all aspect-[4/3] flex flex-col justify-end p-2 cursor-pointer shadow-2xs",
-                        isSelected
-                          ? "ring-2 ring-rose-500 border-rose-500 shadow-md scale-[1.02]"
-                          : "border-slate-200 hover:border-slate-300 hover:shadow-xs"
+                        "text-[10px] px-1.5 py-0.2 rounded-full",
+                        coverCategory === cat.id ? "bg-white/25 text-white" : "bg-slate-200 text-slate-700"
                       )}
                     >
-                      <SafeImage
-                        src={item.url}
-                        alt={item.title}
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
-                      <span className="relative z-10 text-[11px] font-medium text-white truncate drop-shadow-sm">
-                        {item.title}
-                      </span>
-                      {isSelected && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-xs">
-                          <Check className="w-3 h-3 stroke-[3]" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+                      {cat.items.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Presets Grid */}
+              {filteredItems.length === 0 ? (
+                <div className="p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">Ничего не найдено по запросу «{coverSearch}»</p>
+                  <p className="text-[11px] text-slate-400">Попробуйте ввести «котик», «мишка», «объятия» или сбросьте фильтр</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoverSearch("");
+                      setCoverCategory("all");
+                    }}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 cursor-pointer"
+                  >
+                    Показать все стикеры
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
+                  {filteredItems.map((item) => {
+                    const isSelected = general.coverImageUrl === item.url;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => updateGeneral({ coverImageUrl: item.url })}
+                        className={cn(
+                          "relative rounded-xl overflow-hidden border text-left group transition-all aspect-[4/3] flex flex-col justify-end p-2 cursor-pointer shadow-2xs",
+                          isSelected
+                            ? "ring-2 ring-rose-500 border-rose-500 shadow-md scale-[1.02]"
+                            : "border-slate-200 hover:border-slate-300 hover:shadow-xs"
+                        )}
+                      >
+                        <SafeImage
+                          src={item.url}
+                          alt={item.title}
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
+                        <span className="relative z-10 text-[11px] font-medium text-white truncate drop-shadow-sm">
+                          {item.title}
+                        </span>
+                        {isSelected && (
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-xs">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* SUBTAB B: UPLOAD FILE */}
         {imageTab === "upload" && (

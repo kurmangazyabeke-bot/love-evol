@@ -19,6 +19,8 @@ import {
   PartyPopper,
   Plus,
   Wand2,
+  Send,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +49,7 @@ export function Step6Paywall() {
   const [storageProvider, setStorageProvider] = useState<string>("vercel-postgres");
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
   const buildSnapshot = () => ({
@@ -144,9 +147,35 @@ export function Step6Paywall() {
     }
   };
 
-  const shareText = encodeURIComponent(
-    `Привет${general.recipientName ? `, ${general.recipientName}` : ""}! Для тебя есть особенное интерактивное послание... 💖 Открой ссылку: ${shareUrl}`
-  );
+  const inviteGreeting = `Привет${general.recipientName ? `, ${general.recipientName}` : ""}! Для тебя есть особенное интерактивное послание... 💖 Открой: ${shareUrl}`;
+
+  const handleCopyInviteMessage = () => {
+    if (!shareUrl) return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(inviteGreeting).then(() => {
+        setCopiedMessage(true);
+        setTimeout(() => setCopiedMessage(false), 2500);
+      });
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (!shareUrl) return;
+    const title = general.title || "Приглашение на особенный вечер 💖";
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text: `Привет${general.recipientName ? `, ${general.recipientName}` : ""}! Для тебя есть особенное романтическое послание... ✨`,
+          url: shareUrl,
+        });
+      } catch {
+        handleCopyLink();
+      }
+    } else {
+      handleCopyLink();
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -179,7 +208,7 @@ export function Step6Paywall() {
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-600 max-w-xl">
-              Скопируй персональную ссылку и отправь ее своей половинке. Все просмотры, ответы, купоны и выбранная дата появятся в твоем личном кабинете!
+              Поделись ссылкой на открытку с половинкой. Она откроет её напрямую — без регистрации и без попадания в конструктор!
             </p>
           </div>
 
@@ -190,13 +219,13 @@ export function Step6Paywall() {
             </div>
           )}
 
-          {/* Link Box */}
+          {/* Direct Link Box */}
           <div className="space-y-2 relative z-10">
             <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-              <span>Личная ссылка на приглашение:</span>
+              <span>Прямая ссылка для гостя:</span>
               <span className="text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
                 <CheckCircle className="w-3.5 h-3.5" />
-                <span>Бессрочная • С трекингом открытий</span>
+                <span>Вход без регистрации • С трекингом открытий</span>
               </span>
             </label>
 
@@ -232,6 +261,86 @@ export function Step6Paywall() {
                   <>
                     <Copy className="w-4 h-4" />
                     <span>Копировать</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* ================= PRIMARY SHARE ACTIONS BLOCK ================= */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-rose-50 via-pink-50/70 to-amber-50 border border-rose-200/80 space-y-3 relative z-10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Share2 className="w-4 h-4 text-rose-500" />
+                  <span>Поделиться приглашением с половинкой</span>
+                </h4>
+                <p className="text-xs text-slate-600">
+                  Человек сразу увидит конверт и открытку — вход в систему или регистрация <strong className="text-rose-700">не требуются</strong>!
+                </p>
+              </div>
+
+              {/* Native Mobile Share Button */}
+              <button
+                type="button"
+                onClick={handleNativeShare}
+                disabled={!shareUrl}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Поделиться...</span>
+              </button>
+            </div>
+
+            {/* Messengers Grid */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <a
+                href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(
+                  `Для тебя есть особенное интерактивное послание 💖✨`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Telegram</span>
+              </a>
+
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(inviteGreeting)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-xl bg-[#25D366] hover:bg-[#1ebe5b] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </a>
+
+              <a
+                href={`https://vk.com/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(
+                  general.title || "Приглашение на особенный вечер 💖"
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-xl bg-[#0077FF] hover:bg-[#0066DD] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95"
+              >
+                <span>ВКонтакте</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={handleCopyInviteMessage}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              >
+                {copiedMessage ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Текст скопирован!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Скопировать готовый текст</span>
                   </>
                 )}
               </button>
@@ -277,9 +386,9 @@ export function Step6Paywall() {
                 href={shareUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 active:scale-95 transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
               >
-                <span>Открыть как гость</span>
+                <span>Открыть как гость (проверить)</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             )}
@@ -298,7 +407,7 @@ export function Step6Paywall() {
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors"
             >
               <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
-              <span>Перейти в Кабинет ответов</span>
+              <span>Личный кабинет ответов</span>
             </Link>
 
             <button
@@ -325,38 +434,8 @@ export function Step6Paywall() {
                 />
               </div>
               <p className="text-[11px] text-slate-500">
-                Наведите камеру смартфона, чтобы мгновенно открыть приглашение
+                Наведите камеру смартфона, чтобы мгновенно открыть открытку
               </p>
-            </div>
-          )}
-
-          {/* Instant Messenger Share Row */}
-          {shareUrl && (
-            <div className="pt-3 border-t border-slate-100 space-y-2 relative z-10">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Мгновенная отправка в мессенджер:</span>
-              </span>
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(
-                    `Для тебя есть особенное интерактивное послание 💖✨`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
-                >
-                  <span>Telegram</span>
-                </a>
-                <a
-                  href={`https://wa.me/?text=${shareText}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1ebe5b] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
-                >
-                  <span>WhatsApp</span>
-                </a>
-              </div>
             </div>
           )}
         </div>

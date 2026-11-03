@@ -27,6 +27,13 @@ import {
   HelpCircle,
   Wand2,
   Radio,
+  Share2,
+  Send,
+  MessageCircle,
+  LogIn,
+  LogOut,
+  User as UserIcon,
+  Lock,
 } from "lucide-react";
 import { DbInvitation } from "@/types/db";
 import {
@@ -35,6 +42,8 @@ import {
   fetchDbHealth,
   saveDraft,
 } from "@/lib/api";
+import { useAuthStore } from "@/store/useAuthStore";
+import { AuthModal } from "@/components/auth/AuthModal";
 import { SafeImage } from "@/components/common/SafeImage";
 
 // Helper to inflect activity for "Вы идете на ..."
@@ -105,6 +114,7 @@ function formatCreatedDate(isoStr?: string): string {
 }
 
 export default function DashboardPage() {
+  const { user, checkAuth, openAuthModal, logout } = useAuthStore();
   const [invitations, setInvitations] = useState<DbInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,10 +128,16 @@ export default function DashboardPage() {
 
   const [filter, setFilter] = useState<"all" | "accepted" | "opened" | "pending">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedShareText, setCopiedShareText] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [qrModalInvite, setQrModalInvite] = useState<{ id: string; title: string } | null>(
     null
   );
+  const [shareModalInvite, setShareModalInvite] = useState<{
+    id: string;
+    title: string;
+    recipientName?: string;
+  } | null>(null);
 
   // Load invitations + DB health
   const loadData = useCallback(async (isManual = false) => {
@@ -148,8 +164,14 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    checkAuth();
     loadData();
-  }, [loadData]);
+  }, [checkAuth, loadData]);
+
+  // When user changes (login or logout), reload invitations
+  useEffect(() => {
+    loadData(false);
+  }, [user, loadData]);
 
   // Live auto-refresh every 10s when tab is active
   useEffect(() => {
@@ -189,6 +211,24 @@ export default function DashboardPage() {
     }
   };
 
+  // Native share handler
+  const handleNativeShare = async (invId: string, title?: string, recipient?: string) => {
+    const url = `${window.location.origin}/invite/${invId}`;
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: title || "Приглашение на особенный вечер 💖",
+          text: `Привет${recipient ? `, ${recipient}` : ""}! Для тебя есть особенное романтическое послание... ✨`,
+          url,
+        });
+      } catch {
+        handleCopyLink(invId);
+      }
+    } else {
+      handleCopyLink(invId);
+    }
+  };
+
   // Create instant demo invitation in Vercel Postgres
   const handleCreateDemoInvite = async () => {
     setCreatingDemo(true);
@@ -197,65 +237,69 @@ export default function DashboardPage() {
       upcoming.setDate(upcoming.getDate() + 3);
       const dateIso = upcoming.toISOString().split("T")[0];
 
-      await saveDraft({
-        general: {
-          recipientName: "Любимая",
-          senderName: "Твой тайный поклонник",
-          title: "Пойдешь со мной на свидание? 💖",
-          subtitle: "Я приготовил для нас особенный вечер, полный тепла, смеха и магии ✨",
-          coverImageUrl: "https://i.giphy.com/y7hFGjpKGo7qe1Tksx.gif",
-          yesButtonText: "Конечно, ДА! 💕",
-          noButtonText: "Подумаю...",
-          themeVibe: "romantic-classic",
-          particlesType: "hearts",
-          envelopeText: "Тебе секретное послание 💌",
-          soundEffects: true,
-        },
-        confirmation: { enabled: true },
-        noButton: { animationMode: "run-away-plead" },
-        activitiesConfig: { enabled: true, allowCustomIdea: true },
-        activities: [
-          { id: "1", emoji: "🍕", title: "Пицца и вино", selected: true },
-          { id: "2", emoji: "☕", title: "Прогулка с кофе", selected: false },
-          { id: "3", emoji: "🕯️", title: "Ужин при свечах", selected: false },
-          { id: "4", emoji: "🎬", title: "Поход в кино", selected: false },
-        ],
-        dateTime: {
-          enabled: true,
-          mode: "fixed",
-          date: dateIso,
-          time: "19:30",
-          location: "Уютный ресторан в центре города",
-          showCountdown: true,
-          showDateTicket: true,
-        },
-        audio: { enabled: true, url: "synth:moonlight-waltz", title: "Moonlight Waltz" },
-        finalScreen: {
-          message:
-            "Ура! {name}, мы идем на {activity} {date} в {time}! Жду нашей встречи в «{location}» ❤️",
-          photoGallery: [],
-          secretCode: "",
-        },
-        quiz: { enabled: false, questions: [] },
-        coupons: {
-          enabled: true,
-          title: "Любовные купоны для тебя 🎟️",
-          items: [
-            {
-              id: "c1",
-              emoji: "💆‍♀️",
-              title: "Расслабляющий массаж",
-              description: "Действует в любой вечер по первому требованию",
-            },
-            {
-              id: "c2",
-              emoji: "☕",
-              title: "Завтрак и кофе в постель",
-              description: "Твои любимые круассаны и ароматный кофе утром",
-            },
+      await saveDraft(
+        {
+          general: {
+            recipientName: "Любимая",
+            senderName: "Твой тайный поклонник",
+            title: "Пойдешь со мной на свидание? 💖",
+            subtitle: "Я приготовил для нас особенный вечер, полный тепла, смеха и магии ✨",
+            coverImageUrl: "https://i.giphy.com/y7hFGjpKGo7qe1Tksx.gif",
+            yesButtonText: "Конечно, ДА! 💕",
+            noButtonText: "Подумаю...",
+            themeVibe: "romantic-classic",
+            particlesType: "hearts",
+            envelopeText: "Тебе секретное послание 💌",
+            soundEffects: true,
+          },
+          confirmation: { enabled: true },
+          noButton: { animationMode: "run-away-plead" },
+          activitiesConfig: { enabled: true, allowCustomIdea: true },
+          activities: [
+            { id: "1", emoji: "🍕", title: "Пицца и вино", selected: true },
+            { id: "2", emoji: "☕", title: "Прогулка с кофе", selected: false },
+            { id: "3", emoji: "🕯️", title: "Ужин при свечах", selected: false },
+            { id: "4", emoji: "🎬", title: "Поход в кино", selected: false },
           ],
+          dateTime: {
+            enabled: true,
+            mode: "fixed",
+            date: dateIso,
+            time: "19:30",
+            location: "Уютный ресторан в центре города",
+            showCountdown: true,
+            showDateTicket: true,
+          },
+          audio: { enabled: true, url: "synth:moonlight-waltz", title: "Moonlight Waltz" },
+          finalScreen: {
+            message:
+              "Ура! {name}, мы идем на {activity} {date} в {time}! Жду нашей встречи в «{location}» ❤️",
+            photoGallery: [],
+            secretCode: "",
+          },
+          quiz: { enabled: false, questions: [] },
+          coupons: {
+            enabled: true,
+            title: "Любовные купоны для тебя 🎟️",
+            items: [
+              {
+                id: "c1",
+                emoji: "💆‍♀️",
+                title: "Расслабляющий массаж",
+                description: "Действует в любой вечер по первому требованию",
+              },
+              {
+                id: "c2",
+                emoji: "☕",
+                title: "Завтрак и кофе в постель",
+                description: "Твои любимые круассаны и ароматный кофе утром",
+              },
+            ],
+          },
         },
-      });
+        undefined,
+        user?.id
+      );
       await loadData(true);
     } catch (err) {
       console.error("Demo create error:", err);
@@ -316,13 +360,18 @@ export default function DashboardPage() {
       ? `${window.location.origin}/invite/${qrModalInvite.id}`
       : "";
 
+  const activeShareUrl =
+    shareModalInvite && typeof window !== "undefined"
+      ? `${window.location.origin}/invite/${shareModalInvite.id}`
+      : "";
+
   return (
     <div className="min-h-screen bg-slate-50/60 text-slate-800 font-sans pb-24">
       {/* Top Navigation */}
-      <header className="h-16 border-b border-slate-200/80 bg-white/85 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-8 flex items-center justify-between">
+      <header className="h-16 border-b border-slate-200/80 bg-white/85 backdrop-blur-md sticky top-0 z-40 px-3 sm:px-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center text-white shadow-sm shadow-rose-200 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center text-white shadow-sm shadow-rose-200 group-hover:scale-105 transition-transform">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
@@ -345,7 +394,7 @@ export default function DashboardPage() {
           {/* DB Connection Pill */}
           {dbHealth && (
             <div
-              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold border ${
+              className={`hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold border ${
                 dbHealth.connected
                   ? "bg-emerald-50/80 text-emerald-800 border-emerald-200/80"
                   : "bg-amber-50 text-amber-800 border-amber-200"
@@ -353,17 +402,42 @@ export default function DashboardPage() {
               title={`Провайдер БД: ${dbHealth.provider}`}
             >
               <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>
-                {dbHealth.provider === "vercel-postgres"
-                  ? "Vercel Postgres"
-                  : dbHealth.provider}
-              </span>
+              <span>Vercel Postgres</span>
               {dbHealth.latencyMs !== undefined && (
                 <span className="text-[10px] text-emerald-600/80 font-mono">
                   • {dbHealth.latencyMs}мс
                 </span>
               )}
             </div>
+          )}
+
+          {/* User Auth Info / Button */}
+          {user ? (
+            <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold">
+              <div className="w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold">
+                {(user.name || user.email)[0].toUpperCase()}
+              </div>
+              <span className="hidden sm:inline max-w-[120px] truncate">
+                {user.name || user.email.split("@")[0]}
+              </span>
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
+                title="Выйти из аккаунта"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openAuthModal("login")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5 text-rose-500" />
+              <span>Войти</span>
+            </button>
           )}
 
           {/* Live Sync Toggle */}
@@ -398,13 +472,54 @@ export default function DashboardPage() {
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 shadow-md shadow-rose-500/20 transition-all active:scale-95"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Создать приглашение</span>
+            <span className="hidden sm:inline">Создать приглашение</span>
+            <span className="sm:hidden">Создать</span>
           </Link>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
+        {/* Auth Banner (if guest) */}
+        {!user && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-rose-500/10 via-amber-500/10 to-purple-500/10 border border-rose-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm"
+          >
+            <div className="flex items-center gap-3.5 text-center sm:text-left">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-200">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Сохраняйте свидания в защищенном облачном аккаунте
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Зарегистрируйтесь бесплатно, чтобы ваши открытки не потерялись при смене браузера и были под рукой на телефоне.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => openAuthModal("register")}
+                className="px-4 py-2 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 shadow-sm active:scale-95 transition-all cursor-pointer"
+              >
+                Создать аккаунт
+              </button>
+              <button
+                type="button"
+                onClick={() => openAuthModal("login")}
+                className="px-3.5 py-2 rounded-xl font-semibold text-xs text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer"
+              >
+                Войти
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {/* Welcome & Stats Row */}
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -579,6 +694,21 @@ export default function DashboardPage() {
                               <span>Открыть страницу</span>
                               <ExternalLink className="w-3.5 h-3.5" />
                             </Link>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShareModalInvite({
+                                  id: inv.id,
+                                  title: general.title || "Приглашение на особенный вечер",
+                                  recipientName: general.recipientName,
+                                })
+                              }
+                              className="p-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-medium transition-all cursor-pointer"
+                              title="Поделиться приглашением"
+                            >
+                              <Share2 className="w-4 h-4 text-rose-600" />
+                            </button>
 
                             <Link
                               href={`/?edit=${encodeURIComponent(inv.id)}`}
@@ -761,7 +891,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-lg font-bold text-slate-900">Список всех приглашений</h2>
               <p className="text-xs text-slate-500">
-                Редактируйте открытки в один клик, делитесь QR-кодами и дублируйте лучшие шаблоны
+                Делитесь ссылками с половинками, открывайте QR-коды и редактируйте шаблоны
               </p>
             </div>
 
@@ -1028,6 +1158,21 @@ export default function DashboardPage() {
                         </Link>
 
                         <button
+                          type="button"
+                          onClick={() =>
+                            setShareModalInvite({
+                              id: inv.id,
+                              title: general.title || "Приглашение на особенный вечер",
+                              recipientName: general.recipientName,
+                            })
+                          }
+                          className="p-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors cursor-pointer"
+                          title="Поделиться приглашением"
+                        >
+                          <Share2 className="w-4 h-4 text-rose-600" />
+                        </button>
+
+                        <button
                           onClick={(e) => handleCopyLink(inv.id, e)}
                           className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
                           title="Скопировать ссылку"
@@ -1156,6 +1301,151 @@ export default function DashboardPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Share Modal */}
+      <AnimatePresence>
+        {shareModalInvite && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShareModalInvite(null)}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-rose-100 space-y-5 relative"
+            >
+              <button
+                onClick={() => setShareModalInvite(null)}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="space-y-1 text-center sm:text-left">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200">
+                  <Share2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Поделиться с половинкой</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 line-clamp-1">
+                  {shareModalInvite.title}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Человек перейдет напрямую в интерактивную открытку. Ему <strong>не требуется</strong> регистрироваться или входить в систему!
+                </p>
+              </div>
+
+              {/* Direct Link Box */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2">
+                <p className="text-[11px] font-bold text-slate-600">Прямая ссылка для гостя:</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={activeShareUrl}
+                    className="flex-1 bg-white border border-slate-200 px-3 py-2 rounded-xl text-xs font-mono text-slate-700 select-all focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLink(shareModalInvite.id)}
+                    className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    {copiedId === shareModalInvite.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Скопировано</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Копировать</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Native share + Messengers */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-700">Быстрая отправка:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={`https://t.me/share/url?url=${encodeURIComponent(activeShareUrl)}&text=${encodeURIComponent(
+                      `Для тебя есть особенное романтическое послание 💖✨`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-2xs"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>В Telegram</span>
+                  </a>
+
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      `Привет${shareModalInvite.recipientName ? `, ${shareModalInvite.recipientName}` : ""}! Для тебя есть особенное романтическое послание... 💖 Открой: ${activeShareUrl}`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe5b] text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-2xs"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>В WhatsApp</span>
+                  </a>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleNativeShare(
+                      shareModalInvite.id,
+                      shareModalInvite.title,
+                      shareModalInvite.recipientName
+                    )
+                  }
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>Поделиться через телефон...</span>
+                </button>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                <Link
+                  href={`/invite/${shareModalInvite.id}`}
+                  target="_blank"
+                  className="text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1"
+                >
+                  <span>Проверить вид гостя</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQrModalInvite({
+                      id: shareModalInvite.id,
+                      title: shareModalInvite.title,
+                    });
+                    setShareModalInvite(null);
+                  }}
+                  className="text-rose-600 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Показать QR</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Global Auth Modal */}
+      <AuthModal />
     </div>
   );
 }
