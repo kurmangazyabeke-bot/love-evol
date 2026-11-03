@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useInviteStore } from "@/store/useInviteStore";
 import { saveDraft } from "@/lib/api";
 import confetti from "canvas-confetti";
@@ -14,18 +15,17 @@ import {
   Heart,
   QrCode,
   Loader2,
-  Gift,
-  ShieldCheck,
-  Zap,
+  Database,
   PartyPopper,
-  Music,
-  Camera,
-  Calendar,
+  Plus,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Step6Paywall() {
   const {
+    draftId,
+    setDraftId,
     general,
     confirmation,
     noButton,
@@ -35,68 +35,97 @@ export function Step6Paywall() {
     audio,
     finalScreen,
     quiz,
+    coupons,
     telegramNotification,
+    startNewInvitation,
   } = useInviteStore();
-  const [invitationId, setInvitationId] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("love_evol_draft_id") || "";
-    }
-    return "";
-  });
+
+  const [invitationId, setInvitationId] = useState<string>(draftId || "");
+  const [customSlug, setCustomSlug] = useState<string>("");
+  const [isApplyingSlug, setIsApplyingSlug] = useState(false);
+  const [slugMessage, setSlugMessage] = useState<string | null>(null);
+  const [storageProvider, setStorageProvider] = useState<string>("vercel-postgres");
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  // Automatically save draft and generate link on mount
+  const buildSnapshot = () => ({
+    general,
+    confirmation,
+    noButton,
+    activitiesConfig,
+    activities,
+    dateTime,
+    audio,
+    finalScreen,
+    quiz,
+    coupons,
+    telegramNotification,
+  });
+
   useEffect(() => {
     const initAndSave = async () => {
       setIsLoading(true);
       try {
-        const savedId = localStorage.getItem("love_evol_draft_id") || undefined;
-        const configSnapshot = {
-          general,
-          confirmation,
-          noButton,
-          activitiesConfig,
-          activities,
-          dateTime,
-          audio,
-          finalScreen,
-          quiz,
-          telegramNotification,
-        };
+        const existingId =
+          draftId ||
+          (typeof window !== "undefined"
+            ? localStorage.getItem("love_evol_draft_id") || undefined
+            : undefined);
 
-        const res = await saveDraft(configSnapshot, savedId);
+        const res = await saveDraft(buildSnapshot(), existingId);
         if (res.invitation?.id) {
           setInvitationId(res.invitation.id);
-          localStorage.setItem("love_evol_draft_id", res.invitation.id);
-          // Save to user invitations list
-          try {
-            const list = JSON.parse(localStorage.getItem("love_evol_invitation_ids") || "[]");
-            if (!list.includes(res.invitation.id)) {
-              list.unshift(res.invitation.id);
-              localStorage.setItem("love_evol_invitation_ids", JSON.stringify(list));
-            }
-          } catch {}
+          setDraftId(res.invitation.id);
+          if (res.storageProvider) {
+            setStorageProvider(res.storageProvider);
+          }
         }
       } catch (err) {
         console.error("Auto-save error on Step 6:", err);
       } finally {
         setIsLoading(false);
-        triggerSuccessConfetti();
+        confetti({
+          particleCount: 80,
+          spread: 90,
+          origin: { y: 0.6 },
+          colors: ["#fb7185", "#f43f5e", "#fef08a", "#60a5fa", "#a855f7"],
+        });
       }
     };
 
     initAndSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const triggerSuccessConfetti = () => {
-    confetti({
-      particleCount: 80,
-      spread: 90,
-      origin: { y: 0.6 },
-      colors: ["#fb7185", "#f43f5e", "#fef08a", "#60a5fa", "#a855f7"],
-    });
+  const handleApplyCustomSlug = async () => {
+    const cleaned = customSlug
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    if (!cleaned || cleaned.length < 3) {
+      setSlugMessage("Укажите минимум 3 латинских символа или цифры (например: for-aruzhan)");
+      return;
+    }
+
+    setIsApplyingSlug(true);
+    setSlugMessage(null);
+    try {
+      const res = await saveDraft(buildSnapshot(), cleaned);
+      if (res.invitation?.id) {
+        setInvitationId(res.invitation.id);
+        setDraftId(res.invitation.id);
+        setSlugMessage(`✅ Красивая ссылка /invite/${res.invitation.id} успешно закреплена в БД Vercel!`);
+        setCustomSlug("");
+      }
+    } catch (err) {
+      setSlugMessage(err instanceof Error ? err.message : "Не удалось сохранить короткий адрес");
+    } finally {
+      setIsApplyingSlug(false);
+    }
   };
 
   const currentId = invitationId;
@@ -116,7 +145,7 @@ export function Step6Paywall() {
   };
 
   const shareText = encodeURIComponent(
-    `Привет! Для тебя есть особенное интерактивное послание... 💖 Открой ссылку: ${shareUrl}`
+    `Привет${general.recipientName ? `, ${general.recipientName}` : ""}! Для тебя есть особенное интерактивное послание... 💖 Открой ссылку: ${shareUrl}`
   );
 
   return (
@@ -124,31 +153,40 @@ export function Step6Paywall() {
       {/* ================= HERO CARD: ПРИГЛАШЕНИЕ ГОТОВО ================= */}
       <section className="bg-gradient-to-br from-rose-500 via-pink-500 to-amber-500 p-[2px] rounded-3xl shadow-xl shadow-rose-500/10 overflow-hidden">
         <div className="bg-white rounded-[22px] p-6 sm:p-8 space-y-6 relative overflow-hidden">
-          {/* Decorative ambient highlights */}
           <div className="absolute top-0 right-0 -mr-16 -mt-16 w-52 h-52 rounded-full bg-rose-100/60 blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-52 h-52 rounded-full bg-amber-100/50 blur-3xl pointer-events-none" />
 
           {/* Header Tag & Title */}
           <div className="relative z-10 space-y-2 text-center sm:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold tracking-wide">
-              <PartyPopper className="w-3.5 h-3.5 text-emerald-600" />
-              <span>100% БЕСПЛАТНО • ГОТОВО К ОТПРАВКЕ</span>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold tracking-wide">
+                <PartyPopper className="w-3.5 h-3.5 text-emerald-600" />
+                <span>100% БЕСПЛАТНО • ГОТОВО К ОТПРАВКЕ</span>
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 text-emerald-400 text-[11px] font-semibold">
+                <Database className="w-3 h-3" />
+                <span>
+                  {storageProvider === "vercel-postgres"
+                    ? "Vercel Postgres Connected"
+                    : "Cloud Storage Active"}
+                </span>
+              </div>
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Твое приглашение создано! 🎉💖
+              Твое приглашение сохранено в БД! 🎉💖
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-600 max-w-xl">
-              Платформа полностью бесплатна. Скопируй персональную ссылку и отправь ее своей половинке в мессенджер!
+              Скопируй персональную ссылку и отправь ее своей половинке. Все просмотры, ответы, купоны и выбранная дата появятся в твоем личном кабинете!
             </p>
           </div>
 
-          {/* Loading Indicator while creating */}
           {isLoading && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
               <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
-              <span>Синхронизируем черновик и генерируем постоянную ссылку...</span>
+              <span>Сохраняем приглашение в облачную базу данных Vercel Postgres...</span>
             </div>
           )}
 
@@ -158,7 +196,7 @@ export function Step6Paywall() {
               <span>Личная ссылка на приглашение:</span>
               <span className="text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
                 <CheckCircle className="w-3.5 h-3.5" />
-                <span>Бессрочная и без рекламы</span>
+                <span>Бессрочная • С трекингом открытий</span>
               </span>
             </label>
 
@@ -169,12 +207,13 @@ export function Step6Paywall() {
                 ) : (
                   <span className="text-slate-400 italic flex items-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
-                    <span>Синхронизируем базу данных...</span>
+                    <span>Синхронизируем с Vercel Postgres...</span>
                   </span>
                 )}
               </div>
 
               <button
+                type="button"
                 onClick={handleCopyLink}
                 disabled={!shareUrl || isLoading}
                 className={cn(
@@ -199,154 +238,127 @@ export function Step6Paywall() {
             </div>
           </div>
 
+          {/* Custom Short Link Slug Builder */}
+          <div className="p-4 rounded-2xl bg-rose-50/50 border border-rose-200/70 space-y-2.5 relative z-10">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+              <Wand2 className="w-3.5 h-3.5 text-rose-500" />
+              <span>Хочешь красивое именное окончание ссылки? (опционально)</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex-1 flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono">
+                <span className="text-slate-400 select-none">/invite/</span>
+                <input
+                  type="text"
+                  value={customSlug}
+                  onChange={(e) => setCustomSlug(e.target.value)}
+                  placeholder="for-aruzhan"
+                  maxLength={40}
+                  className="flex-1 bg-transparent focus:outline-none text-slate-900 font-semibold"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyCustomSlug}
+                disabled={isApplyingSlug || !customSlug.trim()}
+                className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shrink-0"
+              >
+                {isApplyingSlug ? "Сохраняем..." : "Применить адрес"}
+              </button>
+            </div>
+            {slugMessage && (
+              <p className="text-[11px] font-medium text-emerald-700">{slugMessage}</p>
+            )}
+          </div>
+
           {/* Quick Actions Row */}
           <div className="flex flex-wrap items-center gap-2.5 pt-1 relative z-10">
-            {shareUrl ? (
+            {shareUrl && (
               <a
                 href={shareUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 active:scale-95 transition-all cursor-pointer"
               >
-                <span>Открыть страницу гостя</span>
+                <span>Открыть как гость</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
-            ) : (
-              <button
-                disabled
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed"
-              >
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Подготовка ссылки...</span>
-              </button>
             )}
 
             <button
+              type="button"
               onClick={() => setShowQr(!showQr)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors active:scale-95 cursor-pointer"
             >
               <QrCode className="w-4 h-4 text-slate-600" />
-              <span>{showQr ? "Скрыть QR-код" : "Показать QR-код"}</span>
+              <span>{showQr ? "Скрыть QR-код" : "QR-код открытки"}</span>
+            </button>
+
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors"
+            >
+              <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+              <span>Перейти в Кабинет ответов</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={startNewInvitation}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer ml-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Создать еще одно с нуля</span>
             </button>
           </div>
 
           {/* QR Code Container */}
-          {showQr && (
+          {showQr && shareUrl && (
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col items-center space-y-2 text-center animate-in fade-in zoom-in-95 duration-200">
               <div className="p-3 bg-white rounded-xl shadow-xs border border-slate-200/80">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
                     shareUrl
                   )}`}
                   alt="QR Code"
-                  className="w-36 h-36"
+                  className="w-40 h-40"
                 />
               </div>
               <p className="text-[11px] text-slate-500">
-                Наведите камеру смартфона, чтобы открыть открытку
+                Наведите камеру смартфона, чтобы мгновенно открыть приглашение
               </p>
             </div>
           )}
 
-          {/* Messenger Share Buttons */}
-          <div className="space-y-2.5 pt-2 border-t border-slate-100 relative z-10">
-            <span className="text-xs font-bold text-slate-700 block">
-              Поделиться в мессенджерах:
-            </span>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <a
-                href={`https://t.me/share/url?url=${encodeURIComponent(
-                  shareUrl
-                )}&text=${shareText}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-xs font-semibold transition-all active:scale-95"
-              >
-                <span>✈️ Telegram</span>
-              </a>
-
-              <a
-                href={`https://api.whatsapp.com/send?text=${shareText}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 text-xs font-semibold transition-all active:scale-95"
-              >
-                <span>💬 WhatsApp</span>
-              </a>
-
-              <a
-                href={`https://vk.com/share.php?url=${encodeURIComponent(
-                  shareUrl
-                )}&title=${encodeURIComponent(general.title)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200/80 text-xs font-semibold transition-all active:scale-95"
-              >
-                <span>🔵 ВКонтакте</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ================= FEATURES INCLUDED FREE ================= */}
-      <section className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 space-y-4 shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
-            <Heart className="w-4 h-4 fill-rose-500/20" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Всё включено бесплатно навсегда 🎁
-            </h3>
-            <p className="text-xs text-slate-500">
-              Полный романтический арсенал для идеального свидания
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <Sparkles className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <span className="font-bold text-slate-800 block">Анимации открытия</span>
-              <span className="text-slate-500 text-[11px]">
-                Разрыв атласной ленты или стирание запотевшего стекла
+          {/* Instant Messenger Share Row */}
+          {shareUrl && (
+            <div className="pt-3 border-t border-slate-100 space-y-2 relative z-10">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Мгновенная отправка в мессенджер:</span>
               </span>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(
+                    `Для тебя есть особенное интерактивное послание 💖✨`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+                >
+                  <span>Telegram</span>
+                </a>
+                <a
+                  href={`https://wa.me/?text=${shareText}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1ebe5b] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+                >
+                  <span>WhatsApp</span>
+                </a>
+              </div>
             </div>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <span className="font-bold text-slate-800 block">Магическая кнопка «Нет»</span>
-              <span className="text-slate-500 text-[11px]">
-                Убегает, уменьшается или размножается клонами
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <Camera className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <span className="font-bold text-slate-800 block">Фотоальбом и секрет</span>
-              <span className="text-slate-500 text-[11px]">
-                До 12 фото ваших моментов и тайное послание по клику
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <span className="font-bold text-slate-800 block">Фиксация ответов в БД</span>
-              <span className="text-slate-500 text-[11px]">
-                Вся статистика согласия и записка в Личном кабинете
-              </span>
-            </div>
-          </div>
+          )}
         </div>
       </section>
     </div>

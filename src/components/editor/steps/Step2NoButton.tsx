@@ -13,7 +13,8 @@ import {
   Check,
   Sparkles,
   Zap,
-  RotateCcw,
+  Heart,
+  Ghost,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,8 @@ const FUNNY_PHRASE_PRESETS = [
   "Ты шутишь, да? 🥺",
   "Я буду самым лучшим спутником! 🌟",
   "Выбора нет: жми ДА! ✨",
+  "Кнопка сломалась, работает только ДА! 🤭",
+  "Обещаю обнимашки весь вечер! 🫂",
 ];
 
 export function Step2NoButton() {
@@ -52,21 +55,35 @@ export function Step2NoButton() {
       title: "Убегает",
       tag: "Хит TikTok 🔥",
       icon: Zap,
-      desc: "Кнопка отпрыгивает в случайные координаты контейнера при onMouseEnter или попытке тапа.",
+      desc: "Кнопка ловко отпрыгивает в сторону при наведении курсора или попытке нажатия.",
+    },
+    {
+      id: "turn-into-yes" as NoAnimationMode,
+      title: "Превращается в «ДА»!",
+      tag: "Вирусный тренд 💘",
+      icon: Heart,
+      desc: "После пары попыток отказа кнопка «Нет» сдается и превращается во вторую кнопку «ДА!».",
     },
     {
       id: "shrink" as NoAnimationMode,
       title: "Уменьшается",
       tag: "Мило 🥺",
       icon: Minimize2,
-      desc: "С каждой попыткой клика кнопка становится меньше, пока не превратится в микро-точку.",
+      desc: "С каждой попыткой клика кнопка сжимается, пока не станет крошечной точкой.",
     },
     {
       id: "multiply" as NoAnimationMode,
       title: "Размножается",
       tag: "Троллинг 🎭",
       icon: Copy,
-      desc: "При попытке нажать создает вокруг кнопки-клоны с разными смешными фразами.",
+      desc: "При попытке нажать создает вокруг забавные всплывающие кнопки-клоны.",
+    },
+    {
+      id: "teleport-fade" as NoAnimationMode,
+      title: "Телепорт-призрак",
+      tag: "Магия 👻",
+      icon: Ghost,
+      desc: "Кнопка растворяется в воздухе с поворотом и телепортируется в новое место.",
     },
   ];
 
@@ -81,35 +98,38 @@ export function Step2NoButton() {
           <div>
             <h3 className="text-base font-semibold text-slate-900">Режим поведения кнопки «Нет»</h3>
             <p className="text-xs text-slate-500">
-              Выберите магию Framer Motion, которая не позволит отказать в свидании
+              5 интерактивных режимов, с которыми невозможно отказать в свидании
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {MODES.map((mode) => {
             const Icon = mode.icon;
             const isSelected = noButton.mode === mode.id;
             return (
               <button
                 key={mode.id}
+                type="button"
                 onClick={() => updateNoButton({ mode: mode.id })}
                 className={cn(
-                  "p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between h-36",
+                  "p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between min-h-[138px] cursor-pointer",
                   isSelected
                     ? "border-rose-400 bg-rose-50/40 ring-2 ring-rose-400/20 shadow-sm"
                     : "border-slate-200/80 hover:border-slate-300 bg-white"
                 )}
               >
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center",
-                      isSelected ? "bg-rose-500 text-white" : "bg-slate-100 text-slate-600"
-                    )}>
+                  <div className="flex items-center justify-between mb-2 pr-5">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center",
+                        isSelected ? "bg-rose-500 text-white" : "bg-slate-100 text-slate-600"
+                      )}
+                    >
                       <Icon className="w-4 h-4" />
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
                       {mode.tag}
                     </span>
                   </div>
@@ -141,7 +161,7 @@ export function Step2NoButton() {
             <div>
               <h3 className="text-base font-semibold text-slate-900">Рост кнопки «Да»</h3>
               <p className="text-xs text-slate-500">
-                С каждым уклонением кнопка «Да» увеличивается, привлекая внимание
+                С каждым уклонением кнопка «Да» увеличивается, притягивая взгляд
               </p>
             </div>
           </div>
@@ -160,17 +180,18 @@ export function Step2NoButton() {
         {noButton.yesButtonGrowth && (
           <div className="p-3.5 bg-slate-50/70 rounded-xl border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <span className="text-slate-600 font-medium">Шаг увеличения за попытку:</span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {[
                 { label: "+15% (Плавный)", val: 0.15 },
-                { label: "+20% (Стандарт)", val: 0.20 },
-                { label: "+30% (Агрессивный)", val: 0.30 },
+                { label: "+18% (Оптимальный)", val: 0.18 },
+                { label: "+30% (Быстрый)", val: 0.3 },
               ].map((step) => (
                 <button
                   key={step.val}
+                  type="button"
                   onClick={() => updateNoButton({ growthStep: step.val })}
                   className={cn(
-                    "px-2.5 py-1 rounded-lg transition-colors border",
+                    "px-2.5 py-1 rounded-lg transition-colors border cursor-pointer",
                     noButton.growthStep === step.val
                       ? "bg-rose-500 text-white border-rose-500 font-medium shadow-2xs"
                       : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -212,8 +233,9 @@ export function Step2NoButton() {
             {FUNNY_PHRASE_PRESETS.map((p, idx) => (
               <button
                 key={idx}
+                type="button"
                 onClick={() => handleAddPresetPhrase(p)}
-                className="px-2.5 py-1 rounded-lg text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80 transition-colors flex items-center gap-1 active:scale-95"
+                className="px-2.5 py-1 rounded-lg text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80 transition-colors flex items-center gap-1 active:scale-95 cursor-pointer"
               >
                 <Plus className="w-3 h-3 text-slate-400" />
                 <span>{p}</span>
@@ -233,8 +255,9 @@ export function Step2NoButton() {
             className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
           />
           <button
+            type="button"
             onClick={handleAddPhrase}
-            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-medium hover:bg-slate-800 transition-colors flex items-center gap-1.5 shadow-2xs"
+            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-medium hover:bg-slate-800 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Добавить</span>
@@ -255,9 +278,10 @@ export function Step2NoButton() {
                 <span className="text-slate-800 font-medium truncate">{phrase}</span>
               </div>
               <button
+                type="button"
                 onClick={() => handleRemovePhrase(idx)}
                 title="Удалить фразу"
-                className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
+                className="text-slate-400 hover:text-rose-500 p-1 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

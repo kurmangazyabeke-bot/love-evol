@@ -1,34 +1,39 @@
 import { InviteState } from "./invite";
 
-export type DbInvitationStatus = "pending" | "accepted" | "declined";
+export type DbInvitationStatus = "pending" | "opened" | "accepted" | "declined";
+
+export interface QuizAnswerEntry {
+  question: string;
+  answer: string;
+}
 
 export interface GuestAnswers {
   selectedActivities?: string[];
+  customActivityIdea?: string;
+  claimedCoupons?: string[];
+  quizAnswers?: QuizAnswerEntry[];
   chosenDate?: string;
   chosenTime?: string;
   noAttemptsCount?: number;
   acceptedAt?: string;
   guestNote?: string;
+  guestReactionEmoji?: string;
+  stage?: string;
 }
 
-export type InviteConfigSnapshot = Omit<
+export type InviteConfigSnapshot = Pick<
   InviteState,
-  | "currentStep"
-  | "setCurrentStep"
-  | "updateGeneral"
-  | "updateConfirmation"
-  | "updateNoButton"
-  | "updateActivitiesConfig"
-  | "setActivities"
-  | "toggleActivity"
-  | "updateActivity"
-  | "addActivity"
-  | "removeActivity"
-  | "updateDateTime"
-  | "updateFinalScreen"
-  | "addPhotosToAlbum"
-  | "removePhotoFromAlbum"
-  | "resetToDefaults"
+  | "general"
+  | "confirmation"
+  | "noButton"
+  | "activitiesConfig"
+  | "activities"
+  | "dateTime"
+  | "audio"
+  | "finalScreen"
+  | "quiz"
+  | "coupons"
+  | "telegramNotification"
 >;
 
 export interface DbInvitation {
@@ -37,6 +42,9 @@ export interface DbInvitation {
   config: InviteConfigSnapshot | Record<string, unknown>;
   is_paid: boolean;
   status: DbInvitationStatus;
+  views_count?: number;
+  first_opened_at?: string | null;
+  last_opened_at?: string | null;
   guest_answers: GuestAnswers | Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -53,5 +61,6 @@ export interface SaveDraftResponse {
   success: boolean;
   invitation: DbInvitation;
   shareUrl: string;
+  storageProvider?: string;
   message?: string;
 }

@@ -26,6 +26,11 @@ import { formatTemplate } from "@/lib/template";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "@/components/common/SafeImage";
 import { LoveParticles } from "@/components/common/LoveParticles";
+import { ScratchCard } from "@/components/common/ScratchCard";
+import { DateCountdown } from "@/components/common/DateCountdown";
+import { LoveCouponsDeck } from "@/components/common/LoveCouponsDeck";
+import { DatePassTicket } from "@/components/common/DatePassTicket";
+import { playDodgeBoing, playMagicalChime } from "@/lib/soundEffects";
 import { VibeType } from "@/types/invite";
 
 interface CloneButton {
@@ -50,8 +55,12 @@ export function InviteMobilePreview() {
     updateDateTime,
     audio,
     finalScreen,
+    coupons,
     currentStep,
   } = useInviteStore();
+
+  const [previewClaimedCoupons, setPreviewClaimedCoupons] = useState<string[]>([]);
+  const [noRotation, setNoRotation] = useState(0);
 
   const [isOpened, setIsOpened] = useState(general.openingAnimation === "none");
   const [screen, setScreen] = useState<PreviewScreen>("invite");
@@ -93,8 +102,12 @@ export function InviteMobilePreview() {
   const handleNoInteraction = () => {
     const nextCount = noCount + 1;
     setNoCount(nextCount);
+    playDodgeBoing(general.soundEffects !== false);
 
-    if (noButton.mode === "runaway") {
+    if (noButton.mode === "runaway" || noButton.mode === "teleport-fade") {
+      if (noButton.mode === "teleport-fade") {
+        setNoRotation((r) => r + 360);
+      }
       if (containerRef.current && noButtonRef.current) {
         const container = containerRef.current.getBoundingClientRect();
         const btn = noButtonRef.current.getBoundingClientRect();
@@ -108,8 +121,8 @@ export function InviteMobilePreview() {
         const minY = container.top + 55 - baseTop;
         const maxY = container.bottom - btn.height - 40 - baseTop;
 
-        const nextX = minX + Math.random() * (maxX - minX);
-        const nextY = minY + Math.random() * (maxY - minY);
+        const nextX = minX + Math.random() * Math.max(0, maxX - minX);
+        const nextY = minY + Math.random() * Math.max(0, maxY - minY);
 
         setNoOffset({ x: nextX, y: nextY });
       } else {
@@ -470,33 +483,49 @@ export function InviteMobilePreview() {
                   <span className="truncate max-w-[200px]">{general.yesButtonText || "Да!"}</span>
                 </motion.button>
 
-                {/* NO BUTTON */}
-                <motion.button
-                  ref={noButtonRef}
-                  animate={{
-                    x: noOffset.x,
-                    y: noOffset.y,
-                    scale: noScale,
-                  }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 480,
-                    damping: 22,
-                    mass: 0.6,
-                  }}
-                  onMouseEnter={handleNoInteraction}
-                  onTouchStart={handleNoInteraction}
-                  onClick={handleNoInteraction}
-                  style={{ transformOrigin: "center center" }}
-                  className={cn(
-                    "z-10 px-4 py-2.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 text-xs font-medium border border-slate-300/80 shadow-xs cursor-pointer active:scale-90 transition-colors whitespace-nowrap",
-                    noCount > 0
-                      ? "absolute pointer-events-auto"
-                      : "ml-3"
-                  )}
-                >
-                  {currentNoPhrase}
-                </motion.button>
+                {/* NO BUTTON (OR TRANSFORMED SECOND YES BUTTON) */}
+                {noButton.mode === "turn-into-yes" && noCount >= 2 ? (
+                  <motion.button
+                    initial={{ scale: 0.7, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    onClick={() => {
+                      playMagicalChime(general.soundEffects !== false);
+                      handleYesClick();
+                    }}
+                    className="ml-2.5 z-20 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 text-white text-xs font-bold shadow-md cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Тоже ДА! 🥰</span>
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    ref={noButtonRef}
+                    animate={{
+                      x: noOffset.x,
+                      y: noOffset.y,
+                      scale: noScale,
+                      rotate: noRotation,
+                    }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 480,
+                      damping: 22,
+                      mass: 0.6,
+                    }}
+                    onMouseEnter={handleNoInteraction}
+                    onTouchStart={handleNoInteraction}
+                    onClick={handleNoInteraction}
+                    style={{ transformOrigin: "center center" }}
+                    className={cn(
+                      "z-10 px-4 py-2.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 text-xs font-medium border border-slate-300/80 shadow-xs cursor-pointer active:scale-90 transition-colors whitespace-nowrap",
+                      noCount > 0 && (noButton.mode === "runaway" || noButton.mode === "teleport-fade")
+                        ? "absolute pointer-events-auto"
+                        : "ml-3"
+                    )}
+                  >
+                    {currentNoPhrase}
+                  </motion.button>
+                )}
               </div>
 
               {noCount > 0 && (
@@ -809,18 +838,47 @@ export function InviteMobilePreview() {
               </p>
             </div>
 
-            {/* Date and Location Card */}
+            {/* Date and Location Card + Live Countdown */}
             {dateTime.enabled && (
-              <div className={cn("w-full rounded-xl p-2.5 space-y-2 text-left", cardBg)}>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                    <Calendar className="w-3.5 h-3.5" />
-                  </div>
-                  <span className={cn("text-xs font-semibold", isDark ? "text-slate-100" : "text-slate-800")}>
-                    {formatDisplayDate(dateTime.date)} в {dateTime.time}
-                  </span>
-                </div>
+              <div className="w-full space-y-2">
+                {finalScreen.showCountdown !== false && (
+                  <DateCountdown
+                    dateStr={dateTime.date}
+                    timeStr={dateTime.time}
+                    isDark={isDark}
+                  />
+                )}
+                {finalScreen.showDateTicket !== false && (
+                  <DatePassTicket
+                    recipientName={general.recipientName}
+                    senderName={general.senderName}
+                    dateDisplay={formatDisplayDate(dateTime.date)}
+                    timeDisplay={dateTime.time}
+                    location={finalScreen.location}
+                    mapLink={finalScreen.mapLink}
+                    activitiesSummary={
+                      selectedActivities.map((a) => `${a.icon} ${a.title}`).join(", ") ||
+                      "Особенный вечер"
+                    }
+                    isDark={isDark}
+                  />
+                )}
               </div>
+            )}
+
+            {/* Love Coupons Deck Preview */}
+            {coupons?.enabled && (
+              <LoveCouponsDeck
+                coupons={coupons}
+                claimedIds={previewClaimedCoupons}
+                onToggleClaim={(id) =>
+                  setPreviewClaimedCoupons((prev) =>
+                    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                  )
+                }
+                isDark={isDark}
+                soundEnabled={general.soundEffects !== false}
+              />
             )}
 
             {/* Audio Message if enabled */}
@@ -863,7 +921,17 @@ export function InviteMobilePreview() {
             {/* SECRET MESSAGE INTERACTIVE CARD */}
             {finalScreen.secretMessage && (
               <div className="w-full">
-                {!isSecretRevealed ? (
+                {finalScreen.scratchCard ? (
+                  <ScratchCard>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-1">
+                      <Unlock className="w-3 h-3" />
+                      <span>Личное послание для тебя:</span>
+                    </div>
+                    <p className="text-xs text-slate-800 italic leading-relaxed">
+                      {finalScreen.secretMessage}
+                    </p>
+                  </ScratchCard>
+                ) : !isSecretRevealed ? (
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={() => {

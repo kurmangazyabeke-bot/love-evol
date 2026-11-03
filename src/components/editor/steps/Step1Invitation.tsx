@@ -37,6 +37,7 @@ import { SafeImage } from "@/components/common/SafeImage";
 import { COVER_PRESET_CATEGORIES } from "@/lib/gifCatalog";
 import { SmartLoveTextAssistant } from "@/components/common/SmartLoveTextAssistant";
 import { VoiceRecorder } from "@/components/common/VoiceRecorder";
+import { SYNTH_MELODY_PRESETS } from "@/lib/soundEffects";
 
 const TITLE_SUGGESTIONS = [
   "Пойдешь со мной на свидание? 💖",
@@ -45,20 +46,11 @@ const TITLE_SUGGESTIONS = [
   "Ты свободна в эту пятницу? 😉",
 ];
 
-const AUDIO_PRESETS = [
-  {
-    title: "Романтический саундтрек 🎹",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-  },
-  {
-    title: "Теплая гитарная баллада 🎸",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-  },
-  {
-    title: "Мечтательная мелодия ✨",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-  },
-];
+const AUDIO_PRESETS = SYNTH_MELODY_PRESETS.map((m) => ({
+  title: m.title,
+  subtitle: m.subtitle,
+  url: m.url,
+}));
 
 export function Step1Invitation() {
   const { general, updateGeneral, audio, updateAudio } = useInviteStore();
@@ -464,13 +456,16 @@ export function Step1Invitation() {
         {/* Particles Selector */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-slate-700">Летающие романтические частицы</label>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { id: "hearts", label: "💖 Сердечки", desc: "Классическая любовь" },
               { id: "roses", label: "🌹 Лепестки роз", desc: "Алые розы" },
+              { id: "butterflies", label: "🦋 Бабочки", desc: "Легкость и трепет" },
+              { id: "champagne", label: "🥂 Шампанское", desc: "Праздничный блеск" },
               { id: "stars", label: "✨ Золотые звезды", desc: "Сияющая магия" },
               { id: "sakura", label: "🌸 Сакура", desc: "Нежная весна" },
               { id: "cats", label: "🐾 Кошачьи лапки", desc: "Милота и уют" },
+              { id: "none", label: "🚫 Без частиц", desc: "Чистый минимализм" },
             ].map((p) => {
               const isSelected = (general.particlesType || "hearts") === p.id;
               return (
@@ -491,6 +486,33 @@ export function Step1Invitation() {
               );
             })}
           </div>
+        </div>
+
+        {/* Sound Effects Toggle */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+          <div>
+            <span className="text-xs font-semibold text-slate-800 block">
+              🔔 Мягкие звуковые эффекты при кликах
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Приятные звуки при открытии ленты, убегании кнопки «Нет» и согласии
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => updateGeneral({ soundEffects: general.soundEffects === false ? true : false })}
+            className={cn(
+              "w-11 h-6 rounded-full transition-colors relative focus:outline-none shadow-2xs shrink-0 cursor-pointer",
+              general.soundEffects !== false ? "bg-rose-500" : "bg-slate-200"
+            )}
+          >
+            <span
+              className={cn(
+                "w-4 h-4 rounded-full bg-white block transition-transform shadow-xs absolute top-1",
+                general.soundEffects !== false ? "translate-x-6 left-0" : "translate-x-1 left-0"
+              )}
+            />
+          </button>
         </div>
 
         {/* PIN Code Protection Input */}
@@ -538,8 +560,38 @@ export function Step1Invitation() {
             <Type className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Тексты приглашения</h3>
-            <p className="text-xs text-slate-500">Главное послание и вопрос для вашей половинки</p>
+            <h3 className="text-base font-semibold text-slate-900">Имена & Тексты приглашения</h3>
+            <p className="text-xs text-slate-500">Персонализируйте открытку именами и теплым посланием</p>
+          </div>
+        </div>
+
+        {/* Personalization Names: Recipient & Sender */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200/60">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+              <span>💌 Для кого (Имя половинки)</span>
+            </label>
+            <input
+              type="text"
+              maxLength={32}
+              value={general.recipientName || ""}
+              onChange={(e) => updateGeneral({ recipientName: e.target.value })}
+              placeholder="Например: Аружан, Солнышко"
+              className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+              <span>✨ От кого (Ваше имя / подпись)</span>
+            </label>
+            <input
+              type="text"
+              maxLength={32}
+              value={general.senderName || ""}
+              onChange={(e) => updateGeneral({ senderName: e.target.value })}
+              placeholder="Например: От твоего любимого"
+              className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
           </div>
         </div>
 

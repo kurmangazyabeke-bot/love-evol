@@ -1,33 +1,42 @@
 // Prisma Schema for LoveEvol Invitation Builder
-// Database: PostgreSQL / Supabase
+// Primary Database: Vercel Postgres (Neon Serverless PostgreSQL)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-enum InvitationStatus {
-  pending
-  accepted
-  declined
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model Invitation {
-  id           String           @id @default(uuid()) @db.Uuid
-  userId       String?          @map("user_id") @db.Uuid
-  config       Json             @default("{}") @db.JsonB
-  isPaid       Boolean          @default(false) @map("is_paid")
-  status       InvitationStatus @default(pending)
-  guestAnswers Json             @default("{}") @map("guest_answers") @db.JsonB
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String    @id @default(uuid())
+  userId        String?   @map("user_id")
+  config        Json      @default("{}") @db.JsonB
+  isPaid        Boolean   @default(true) @map("is_paid")
+  status        String    @default("pending")
+  viewsCount    Int       @default(0) @map("views_count")
+  firstOpenedAt DateTime? @map("first_opened_at") @db.Timestamptz(6)
+  lastOpenedAt  DateTime? @map("last_opened_at") @db.Timestamptz(6)
+  guestAnswers  Json      @default("{}") @map("guest_answers") @db.JsonB
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([userId], map: "idx_invitations_user_id")
   @@index([status], map: "idx_invitations_status")
   @@index([createdAt(sort: Desc)], map: "idx_invitations_created_at")
   @@map("invitations")
+}
+
+model MediaAsset {
+  id        String   @id @default(uuid())
+  mimeType  String   @map("mime_type")
+  fileName  String?  @map("file_name")
+  sizeBytes Int      @default(0) @map("size_bytes")
+  base64    String   @map("base64_data")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("media_assets")
 }

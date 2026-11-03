@@ -23,6 +23,9 @@ import {
   HelpCircle,
   ExternalLink,
   AlertCircle,
+  Ticket,
+  Clock,
+  Navigation,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uploadFile } from "@/lib/api";
@@ -38,19 +41,37 @@ const SAMPLE_PHOTO_PRESETS = [
   "https://images.unsplash.com/photo-1494774157365-9e04c6720e47?q=80&w=600&auto=format&fit=crop",
 ];
 
+const COUPON_PRESETS = [
+  { icon: "💆‍♀️", title: "30 минут массажа", description: "Полный релакс после долгого дня" },
+  { icon: "☕", title: "Завтрак в постель", description: "В любое воскресное утро на твой выбор" },
+  { icon: "🍕", title: "Любая еда за мой счёт", description: "Выбирай доставку без ограничений" },
+  { icon: "🎬", title: "Выбор любого фильма", description: "Смотрим то, что скажешь ты, без споров" },
+  { icon: "💐", title: "Внеплановый букет цветов", description: "Просто так, чтобы увидеть твою улыбку" },
+  { icon: "🧞‍♂️", title: "Исполнение 1 желания", description: "Твой личный джинн на один вечер" },
+];
+
 export function Step5FinalScreen() {
   const {
     finalScreen,
     dateTime,
     activities,
     quiz,
+    coupons,
     telegramNotification,
     updateFinalScreen,
     updateQuiz,
+    updateCoupons,
+    toggleCoupon,
+    addCoupon,
+    removeCoupon,
     updateTelegramNotification,
     addPhotosToAlbum,
     removePhotoFromAlbum,
   } = useInviteStore();
+
+  const [newCouponIcon, setNewCouponIcon] = useState("🎁");
+  const [newCouponTitle, setNewCouponTitle] = useState("");
+  const [newCouponDesc, setNewCouponDesc] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const celebrationInputRef = useRef<HTMLInputElement>(null);
@@ -275,19 +296,92 @@ export function Step5FinalScreen() {
           </p>
         </div>
 
-        {/* Location input */}
-        <div className="space-y-1.5 pt-2 border-t border-slate-100">
-          <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
-            <MapPin className="w-3.5 h-3.5 text-slate-500" />
-            <span>Локация встречи</span>
-          </label>
-          <input
-            type="text"
-            value={finalScreen.location}
-            onChange={(e) => updateFinalScreen({ location: e.target.value })}
-            className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
-            placeholder="Уютный ресторан в центре города"
-          />
+        {/* Location & Map Link input */}
+        <div className="space-y-3 pt-2 border-t border-slate-100">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-slate-500" />
+              <span>Локация встречи (название места или адрес)</span>
+            </label>
+            <input
+              type="text"
+              value={finalScreen.location}
+              onChange={(e) => updateFinalScreen({ location: e.target.value })}
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+              placeholder="Уютный ресторан в центре города"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+              <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Ссылка на 2ГИС / Яндекс.Карты / Google Maps (опционально)</span>
+            </label>
+            <input
+              type="url"
+              value={finalScreen.mapLink || ""}
+              onChange={(e) => updateFinalScreen({ mapLink: e.target.value })}
+              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono"
+              placeholder="https://go.2gis.com/... (если пусто — авто-поиск в 2ГИС по названию)"
+            />
+          </div>
+
+          {/* Interactive Finale Widgets Toggles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Таймер до встречи</span>
+                </span>
+                <p className="text-[10px] text-slate-500">Обратный отсчет дней и секунд</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  updateFinalScreen({ showCountdown: finalScreen.showCountdown === false ? true : false })
+                }
+                className={cn(
+                  "w-10 h-5.5 rounded-full transition-colors relative shrink-0 cursor-pointer",
+                  finalScreen.showCountdown !== false ? "bg-rose-500" : "bg-slate-200"
+                )}
+              >
+                <span
+                  className={cn(
+                    "w-4 h-4 rounded-full bg-white block transition-transform shadow-xs absolute top-[3px]",
+                    finalScreen.showCountdown !== false ? "translate-x-5 left-0" : "translate-x-1 left-0"
+                  )}
+                />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  <Ticket className="w-3.5 h-3.5 text-amber-500" />
+                  <span>VIP-Билет на свидание</span>
+                </span>
+                <p className="text-[10px] text-slate-500">Скачивание PNG билета для Stories</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  updateFinalScreen({ showDateTicket: finalScreen.showDateTicket === false ? true : false })
+                }
+                className={cn(
+                  "w-10 h-5.5 rounded-full transition-colors relative shrink-0 cursor-pointer",
+                  finalScreen.showDateTicket !== false ? "bg-rose-500" : "bg-slate-200"
+                )}
+              >
+                <span
+                  className={cn(
+                    "w-4 h-4 rounded-full bg-white block transition-transform shadow-xs absolute top-[3px]",
+                    finalScreen.showDateTicket !== false ? "translate-x-5 left-0" : "translate-x-1 left-0"
+                  )}
+                />
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -767,7 +861,166 @@ export function Step5FinalScreen() {
         </div>
       </section>
 
-      {/* ================= 4. МИНИ-ВИКТОРИНА (LOVE QUIZ) ================= */}
+      {/* ================= 3.8. РОМАНТИЧЕСКИЕ КУПОНЫ ЛЮБВИ (LOVE COUPONS) ================= */}
+      <section className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Ticket className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                <span>Подарочные купоны любви</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold">
+                  NEW 🎟️
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Половинка сможет выбрать и активировать милые купоны желаний прямо на финальном экране!
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => updateCoupons({ enabled: !coupons.enabled })}
+            className={cn(
+              "w-11 h-6 rounded-full transition-colors relative focus:outline-none shadow-2xs shrink-0 cursor-pointer",
+              coupons.enabled ? "bg-rose-500" : "bg-slate-200"
+            )}
+          >
+            <span
+              className={cn(
+                "w-4 h-4 rounded-full bg-white block transition-transform shadow-xs absolute top-1",
+                coupons.enabled ? "translate-x-6 left-0" : "translate-x-1 left-0"
+              )}
+            />
+          </button>
+        </div>
+
+        {coupons.enabled && (
+          <div className="space-y-4 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
+                Быстрое добавление купонов:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {COUPON_PRESETS.map((cp, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() =>
+                      addCoupon({
+                        icon: cp.icon,
+                        title: cp.title,
+                        description: cp.description,
+                        enabled: true,
+                      })
+                    }
+                    disabled={coupons.items.length >= 8}
+                    className="px-2.5 py-1 rounded-lg text-xs bg-amber-50/70 hover:bg-amber-100 text-amber-900 border border-amber-200/80 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <span>{cp.icon}</span>
+                    <span>{cp.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {coupons.items.length < 8 && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={newCouponIcon}
+                  onChange={(e) => setNewCouponIcon(e.target.value)}
+                  className="w-14 px-2 py-2 text-center text-sm rounded-xl border border-slate-200 bg-slate-50/50"
+                  placeholder="🎁"
+                />
+                <input
+                  type="text"
+                  value={newCouponTitle}
+                  onChange={(e) => setNewCouponTitle(e.target.value)}
+                  placeholder="Название купона (напр. Поцелуй без повода)"
+                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+                <input
+                  type="text"
+                  value={newCouponDesc}
+                  onChange={(e) => setNewCouponDesc(e.target.value)}
+                  placeholder="Описание (опционально)"
+                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newCouponTitle.trim()) return;
+                    addCoupon({
+                      icon: newCouponIcon.trim() || "🎁",
+                      title: newCouponTitle.trim(),
+                      description: newCouponDesc.trim() || undefined,
+                      enabled: true,
+                    });
+                    setNewCouponTitle("");
+                    setNewCouponDesc("");
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 flex items-center justify-center gap-1 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Добавить</span>
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {coupons.items.map((item) => (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "p-3 rounded-xl border flex items-center justify-between gap-3 transition-all",
+                    item.enabled
+                      ? "bg-rose-50/40 border-rose-200"
+                      : "bg-slate-50 border-slate-200 opacity-65"
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleCoupon(item.id)}
+                    className="flex items-center gap-2.5 text-left flex-1 min-w-0 cursor-pointer"
+                  >
+                    <div
+                      className={cn(
+                        "w-5 h-5 rounded-md border flex items-center justify-center shrink-0",
+                        item.enabled
+                          ? "bg-rose-500 border-rose-500 text-white"
+                          : "bg-white border-slate-300"
+                      )}
+                    >
+                      {item.enabled && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                    <span className="text-lg shrink-0">{item.icon}</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 truncate">{item.title}</div>
+                      {item.description && (
+                        <div className="text-[11px] text-slate-500 truncate">{item.description}</div>
+                      )}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => removeCoupon(item.id)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ================= 4. МИНИ-ВИКТОРИНА (LOVE QUIZ — ДО 5 ВОПРОСОВ) ================= */}
       <section className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -776,10 +1029,10 @@ export function Step5FinalScreen() {
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900">
-                Мини-викторина для двоих (Love Quiz)
+                Мини-викторина для двоих (до 5 вопросов)
               </h3>
               <p className="text-xs text-slate-500">
-                Забавный вопрос перед выбором «Да/Нет» для разогрева чувств
+                Вопросы перед выбором «Да/Нет» — ответы гостя сохранятся в вашем кабинете!
               </p>
             </div>
           </div>
@@ -803,59 +1056,112 @@ export function Step5FinalScreen() {
 
         {quiz.enabled && (
           <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-700">Текст вопроса</label>
-              <input
-                type="text"
-                value={quiz.questions[0]?.question || ""}
-                onChange={(e) => {
-                  const currentQ = quiz.questions[0] || { id: "q1", question: "", options: [], reaction: "" };
-                  updateQuiz({
-                    questions: [{ ...currentQ, question: e.target.value }],
-                  });
-                }}
-                placeholder="Кто из нас двоих сильнее любит? 🥰"
-                className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
-              />
-            </div>
+            {quiz.questions.map((qItem, qIdx) => (
+              <div
+                key={qItem.id || qIdx}
+                className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-rose-600">
+                    Вопрос #{qIdx + 1}
+                  </span>
+                  {quiz.questions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateQuiz({
+                          questions: quiz.questions.filter((_, idx) => idx !== qIdx),
+                        })
+                      }
+                      className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Удалить</span>
+                    </button>
+                  )}
+                </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-700">Варианты ответа (3 шт.)</label>
-              {(quiz.questions[0]?.options || ["Я тебя! 💕", "Нет, я сильнее! 💖", "Оба до луны и обратно! ✨"]).map((opt, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="w-5 text-center text-xs text-slate-400 font-mono">#{i + 1}</span>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-slate-600">Текст вопроса</label>
                   <input
                     type="text"
-                    value={opt}
+                    value={qItem.question}
                     onChange={(e) => {
-                      const currentQ = quiz.questions[0] || { id: "q1", question: "", options: [], reaction: "" };
-                      const newOptions = [...(currentQ.options || [])];
-                      newOptions[i] = e.target.value;
-                      updateQuiz({
-                        questions: [{ ...currentQ, options: newOptions }],
-                      });
+                      const updated = [...quiz.questions];
+                      updated[qIdx] = { ...qItem, question: e.target.value };
+                      updateQuiz({ questions: updated });
                     }}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                    placeholder="Кто из нас двоих сильнее любит? 🥰"
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                   />
                 </div>
-              ))}
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-700">Милая реакция на ответ</label>
-              <input
-                type="text"
-                value={quiz.questions[0]?.reaction || ""}
-                onChange={(e) => {
-                  const currentQ = quiz.questions[0] || { id: "q1", question: "", options: [], reaction: "" };
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-slate-600">Варианты ответа</label>
+                  {(qItem.options || ["", "", ""]).map((opt, oIdx) => (
+                    <div key={oIdx} className="flex items-center gap-2">
+                      <span className="w-5 text-center text-[11px] text-slate-400 font-mono">
+                        #{oIdx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={opt}
+                        onChange={(e) => {
+                          const updated = [...quiz.questions];
+                          const nextOpts = [...(qItem.options || ["", "", ""])];
+                          nextOpts[oIdx] = e.target.value;
+                          updated[qIdx] = { ...qItem, options: nextOpts };
+                          updateQuiz({ questions: updated });
+                        }}
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-slate-600">Реакция после ответа</label>
+                  <input
+                    type="text"
+                    value={qItem.reaction}
+                    onChange={(e) => {
+                      const updated = [...quiz.questions];
+                      updated[qIdx] = { ...qItem, reaction: e.target.value };
+                      updateQuiz({ questions: updated });
+                    }}
+                    placeholder="Самый милый ответ! 🥰"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                  />
+                </div>
+              </div>
+            ))}
+
+            {quiz.questions.length < 5 && (
+              <button
+                type="button"
+                onClick={() =>
                   updateQuiz({
-                    questions: [{ ...currentQ, reaction: e.target.value }],
-                  });
-                }}
-                placeholder="Правильный ответ! Мы оба без ума друг от друга! 🥰"
-                className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
-              />
-            </div>
+                    questions: [
+                      ...quiz.questions,
+                      {
+                        id: `q-${Date.now()}`,
+                        question: "Какой момент со мной тебе запомнился больше всего? ✨",
+                        options: [
+                          "Наша первая встреча 💫",
+                          "Наши долгие разговоры до ночи 🌙",
+                          "Каждая минута рядом с тобой ❤️",
+                        ],
+                        reaction: "Мое сердечко тает от этих слов! 🥹💖",
+                      },
+                    ],
+                  })
+                }
+                className="w-full py-2.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/40 hover:bg-rose-50 text-rose-700 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Добавить еще вопрос ({quiz.questions.length}/5)</span>
+              </button>
+            )}
           </div>
         )}
       </section>

@@ -21,8 +21,9 @@ import {
   MessageSquare,
   RotateCcw,
   CheckCheck,
+  X,
 } from "lucide-react";
-import { DbInvitation } from "@/types/db";
+import { DbInvitation, GuestAnswers, QuizAnswerEntry } from "@/types/db";
 import {
   GeneralInfo,
   ConfirmationSettings,
@@ -32,6 +33,7 @@ import {
   DateTimeSettings,
   AudioSettings,
   FinalScreenSettings,
+  CouponsSettings,
 } from "@/types/invite";
 import {
   initialGeneral,
@@ -42,12 +44,13 @@ import {
   initialDateTime,
   initialAudio,
   initialFinalScreen,
+  initialCoupons,
 } from "@/store/useInviteStore";
 import { VIBES, isColorDark, VibeConfig } from "@/lib/vibes";
 import { OpeningOverlay } from "@/components/preview/OpeningOverlay";
 import { AudioPlayer } from "@/components/preview/AudioPlayer";
 import { formatTemplate } from "@/lib/template";
-import { submitGuestAnswers } from "@/lib/api";
+import { submitGuestAnswers, recordGuestView } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "@/components/common/SafeImage";
 import { LoveParticles } from "@/components/common/LoveParticles";
@@ -55,6 +58,10 @@ import { PinCodeProtection } from "@/components/common/PinCodeProtection";
 import { LoveQuiz } from "@/components/common/LoveQuiz";
 import { ScratchCard } from "@/components/common/ScratchCard";
 import { CalendarExportButton } from "@/components/common/CalendarExportButton";
+import { DateCountdown } from "@/components/common/DateCountdown";
+import { LoveCouponsDeck } from "@/components/common/LoveCouponsDeck";
+import { DatePassTicket } from "@/components/common/DatePassTicket";
+import { playDodgeBoing, playMagicalChime, playSoftPop } from "@/lib/soundEffects";
 import { QuizSettings } from "@/types/invite";
 
 interface CloneButton {
@@ -107,41 +114,62 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
   };
 
   const quiz = (rawConfig.quiz as QuizSettings) || { enabled: false, questions: [] };
+  const coupons: CouponsSettings = {
+    ...initialCoupons,
+    ...((rawConfig.coupons as Partial<CouponsSettings>) || {}),
+  };
+
+  const prevGuestAnswers = (invitation.guest_answers || {}) as GuestAnswers;
 
   // State
   const [isPinUnlocked, setIsPinUnlocked] = useState(!general.pinCode);
   const [quizPassed, setQuizPassed] = useState(!quiz.enabled || !quiz.questions || quiz.questions.length === 0);
+  const [quizAnswers, setQuizAnswers] = useState<QuizAnswerEntry[]>(prevGuestAnswers.quizAnswers || []);
   const [isOpened, setIsOpened] = useState(general.openingAnimation === "none");
   const [screen, setScreen] = useState<GuestScreen>("invite");
   const [direction, setDirection] = useState(1);
   const [noCount, setNoCount] = useState(0);
+  const [noRotation, setNoRotation] = useState(0);
   const [noOffset, setNoOffset] = useState({ x: 0, y: 0 });
   const [clones, setClones] = useState<CloneButton[]>([]);
   const [isSecretRevealed, setIsSecretRevealed] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
 
   // Guest Answers State
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(
     activities.filter((a) => a.selected).map((a) => a.id)
   );
+  const [customActivityIdea, setCustomActivityIdea] = useState<string>(
+    prevGuestAnswers.customActivityIdea || ""
+  );
+  const [claimedCouponIds, setClaimedCouponIds] = useState<string[]>([]);
   const [chosenDate, setChosenDate] = useState(dateTime.date);
   const [chosenTime, setChosenTime] = useState(dateTime.time);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(invitation.status === "accepted");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [guestNote, setGuestNote] = useState("");
+  const [guestNote, setGuestNote] = useState(prevGuestAnswers.guestNote || "");
+  const [guestReactionEmoji, setGuestReactionEmoji] = useState(
+    prevGuestAnswers.guestReactionEmoji || ""
+  );
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const noButtonRef = useRef<HTMLButtonElement>(null);
+  const viewTrackedRef = useRef(false);
 
-  // Sync opening
+  // Sync opening & track open event in Vercel Postgres
   useEffect(() => {
     if (general.openingAnimation === "none") {
       setIsOpened(true);
     }
-  }, [general.openingAnimation]);
+    if (!viewTrackedRef.current && invitation.id) {
+      viewTrackedRef.current = true;
+      recordGuestView(invitation.id);
+    }
+  }, [general.openingAnimation, invitation.id]);
 
   if (!isPinUnlocked && general.pinCode) {
     return (
@@ -156,8 +184,12 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
   const handleNoInteraction = () => {
     const nextCount = noCount + 1;
     setNoCount(nextCount);
+    playDodgeBoing(general.soundEffects !== false);
 
-    if (noButton.mode === "runaway") {
+    if (noButton.mode === "runaway" || noButton.mode === "teleport-fade") {
+      if (noButton.mode === "teleport-fade") {
+        setNoRotation((r) => r + 360);
+      }
       if (containerRef.current && noButtonRef.current) {
         const container = containerRef.current.getBoundingClientRect();
         const btn = noButtonRef.current.getBoundingClientRect();
@@ -171,8 +203,8 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
         const minY = container.top + 60 - baseTop;
         const maxY = container.bottom - btn.height - 50 - baseTop;
 
-        const nextX = minX + Math.random() * (maxX - minX);
-        const nextY = minY + Math.random() * (maxY - minY);
+        const nextX = minX + Math.random() * Math.max(0, maxX - minX);
+        const nextY = minY + Math.random() * Math.max(0, maxY - minY);
 
         setNoOffset({ x: nextX, y: nextY });
       } else {
@@ -190,8 +222,8 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
 
         const newClones: CloneButton[] = Array.from({ length: 2 }).map((_, i) => ({
           id: Date.now() + i + Math.random(),
-          x: 20 + Math.random() * (container.width - 140),
-          y: 80 + Math.random() * (container.height - 200),
+          x: 20 + Math.random() * Math.max(60, container.width - 140),
+          y: 80 + Math.random() * Math.max(100, container.height - 200),
           text: availablePhrases[(nextCount + i) % availablePhrases.length],
         }));
 
@@ -202,30 +234,49 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
 
   // Toggle activity selection by guest
   const toggleActivitySelection = (id: string) => {
+    playSoftPop(general.soundEffects !== false);
     setSelectedActivityIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
   };
 
   // Submit final answers to API via PATCH request to update guest_answers
-  const saveGuestAnswers = async (noteOverride?: string) => {
+  const saveGuestAnswers = async (
+    overrides?: {
+      note?: string;
+      stage?: string;
+      claimedCoupons?: string[];
+      reactionEmoji?: string;
+    }
+  ) => {
     setIsSubmitting(true);
     setSubmitError(null);
     const selectedNames = activities
       .filter((a) => selectedActivityIds.includes(a.id))
       .map((a) => `${a.icon} ${a.title}`);
 
+    const couponTitles =
+      overrides?.claimedCoupons ||
+      (coupons.items || [])
+        .filter((c) => claimedCouponIds.includes(c.id))
+        .map((c) => `${c.icon} ${c.title}`);
+
     try {
       await submitGuestAnswers(
         invitation.id,
         {
-          stage: "final_plan",
+          stage: overrides?.stage || "final_plan",
           selectedActivities: selectedNames,
+          customActivityIdea: customActivityIdea.trim() || undefined,
+          claimedCoupons: couponTitles.length > 0 ? couponTitles : undefined,
+          quizAnswers: quizAnswers.length > 0 ? quizAnswers : undefined,
           chosenDate: dateTime.enabled ? chosenDate : undefined,
           chosenTime: dateTime.enabled ? chosenTime : undefined,
           noAttemptsCount: noCount,
           acceptedAt: new Date().toISOString(),
-          guestNote: noteOverride !== undefined ? noteOverride : guestNote,
+          guestNote: overrides?.note !== undefined ? overrides.note : guestNote,
+          guestReactionEmoji:
+            overrides?.reactionEmoji !== undefined ? overrides.reactionEmoji : guestReactionEmoji,
         },
         "PATCH"
       );
@@ -238,11 +289,24 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
     }
   };
 
+  const handleToggleCouponClaim = (couponId: string) => {
+    const nextIds = claimedCouponIds.includes(couponId)
+      ? claimedCouponIds.filter((x) => x !== couponId)
+      : [...claimedCouponIds, couponId];
+    setClaimedCouponIds(nextIds);
+
+    const nextTitles = (coupons.items || [])
+      .filter((c) => nextIds.includes(c.id))
+      .map((c) => `${c.icon} ${c.title}`);
+
+    saveGuestAnswers({ stage: "coupon_claim", claimedCoupons: nextTitles });
+  };
+
   const handleSendNote = async () => {
-    if (!guestNote.trim()) return;
+    if (!guestNote.trim() && !guestReactionEmoji) return;
     setIsSavingNote(true);
     try {
-      await saveGuestAnswers(guestNote.trim());
+      await saveGuestAnswers({ note: guestNote.trim(), stage: "guest_note" });
       setNoteSaved(true);
       setTimeout(() => setNoteSaved(false), 3000);
     } finally {
@@ -252,6 +316,7 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
 
   // Step transitions
   const handleYesClick = () => {
+    playMagicalChime(general.soundEffects !== false);
     setDirection(1);
     setScreen("confirmation");
     confetti({
@@ -261,11 +326,13 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
       colors: ["#fda4af", "#f43f5e", "#ffedd5", "#fbbf24"],
     });
 
-    // Mгновенное оповещение создателя открытки в Telegram о согласии!
+    // Мгновенное оповещение создателя открытки в Telegram о согласии!
     submitGuestAnswers(
       invitation.id,
       {
         stage: "initial_yes",
+        noAttemptsCount: noCount,
+        quizAnswers: quizAnswers.length > 0 ? quizAnswers : undefined,
         acceptedAt: new Date().toISOString(),
       },
       "PATCH"
@@ -434,10 +501,17 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
         />
 
         {/* Top Header / Share button */}
-        <div className="flex items-center justify-between z-30 pt-1 pb-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/70 backdrop-blur-xs border border-white/60 shadow-2xs text-[11px] font-semibold text-slate-700">
-            <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
-            <span>LoveEvol</span>
+        <div className="flex items-center justify-between z-30 pt-1 pb-2 gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/75 backdrop-blur-xs border border-white/60 shadow-2xs text-[11px] font-semibold text-slate-700 truncate max-w-[260px]">
+            <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
+            {general.recipientName ? (
+              <span className="truncate">
+                Для {general.recipientName}
+                {general.senderName ? ` • от ${general.senderName}` : ""}
+              </span>
+            ) : (
+              <span>LoveEvol</span>
+            )}
           </div>
 
           <button
@@ -532,7 +606,14 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
               {/* Action Buttons Zone or Love Quiz */}
               {quiz.enabled && !quizPassed ? (
                 <div className="w-full pt-1 pb-2">
-                  <LoveQuiz quiz={quiz} onPassed={() => setQuizPassed(true)} />
+                  <LoveQuiz
+                    quiz={quiz}
+                    soundEnabled={general.soundEffects !== false}
+                    onPassed={(ans) => {
+                      if (ans) setQuizAnswers(ans);
+                      setQuizPassed(true);
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="w-full pt-1 pb-2 flex flex-col items-center justify-center relative min-h-[92px]">
@@ -545,38 +626,55 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
                       style={{ transformOrigin: "center center" }}
                       className={cn(
                         "z-20 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-700 text-white text-sm font-semibold shadow-lg shadow-rose-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 max-w-[280px] select-none cursor-pointer",
-                        noCount > 0 ? "mx-auto" : ""
+                        noCount > 0 && (noButton.mode === "runaway" || noButton.mode === "teleport-fade")
+                          ? "mx-auto"
+                          : ""
                       )}
                     >
                       <Heart className="w-4 h-4 fill-white text-white shrink-0" />
                       <span className="truncate max-w-[210px]">{general.yesButtonText || "Да!"}</span>
                     </motion.button>
 
-                    {/* NO BUTTON */}
-                    <motion.button
-                      ref={noButtonRef}
-                      animate={{
-                        x: noOffset.x,
-                        y: noOffset.y,
-                        scale: noScale,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 480,
-                        damping: 22,
-                        mass: 0.6,
-                      }}
-                      onMouseEnter={handleNoInteraction}
-                      onTouchStart={handleNoInteraction}
-                      onClick={handleNoInteraction}
-                      style={{ transformOrigin: "center center" }}
-                      className={cn(
-                        "z-10 px-4 py-2.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 text-xs font-medium border border-slate-300/80 shadow-xs cursor-pointer active:scale-90 transition-colors whitespace-nowrap",
-                        noCount > 0 ? "absolute pointer-events-auto" : "ml-3"
-                      )}
-                    >
-                      {currentNoPhrase}
-                    </motion.button>
+                    {/* NO BUTTON OR TRANSFORMED YES BUTTON */}
+                    {noButton.mode === "turn-into-yes" && noCount >= 2 ? (
+                      <motion.button
+                        initial={{ scale: 0.7, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        onClick={handleYesClick}
+                        className="ml-2.5 z-20 px-4 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-500 text-white text-xs font-bold shadow-md cursor-pointer active:scale-95 flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>Конечно, ДА! 🥰</span>
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        ref={noButtonRef}
+                        animate={{
+                          x: noOffset.x,
+                          y: noOffset.y,
+                          scale: noScale,
+                          rotate: noRotation,
+                        }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 480,
+                          damping: 22,
+                          mass: 0.6,
+                        }}
+                        onMouseEnter={handleNoInteraction}
+                        onTouchStart={handleNoInteraction}
+                        onClick={handleNoInteraction}
+                        style={{ transformOrigin: "center center" }}
+                        className={cn(
+                          "z-10 px-4 py-2.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 text-xs font-medium border border-slate-300/80 shadow-xs cursor-pointer active:scale-90 transition-colors whitespace-nowrap",
+                          noCount > 0 && (noButton.mode === "runaway" || noButton.mode === "teleport-fade")
+                            ? "absolute pointer-events-auto"
+                            : "ml-3"
+                        )}
+                      >
+                        {currentNoPhrase}
+                      </motion.button>
+                    )}
                   </div>
 
                   {noCount > 0 && (
@@ -715,6 +813,20 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
               </div>
 
               <div className="space-y-2 pt-1 pb-1">
+                {activitiesConfig.allowCustomIdea !== false && (
+                  <input
+                    type="text"
+                    value={customActivityIdea}
+                    onChange={(e) => setCustomActivityIdea(e.target.value)}
+                    placeholder="💡 Или предложи свой вариант вечера..."
+                    className={cn(
+                      "w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium focus:outline-none focus:ring-2 focus:ring-rose-400",
+                      isDark
+                        ? "bg-slate-900/80 border-white/20 text-white placeholder:text-slate-400"
+                        : "bg-white/90 border-slate-200 text-slate-800 placeholder:text-slate-400"
+                    )}
+                  />
+                )}
                 <p className={cn("text-center text-xs", isDark ? "text-slate-300" : "text-slate-500")}>
                   Выбрано вариантов:{" "}
                   <span className="font-bold text-rose-500">
@@ -915,23 +1027,45 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
                 </p>
               </div>
 
-              {/* Date, Time & Location Summary */}
+              {/* DateCountdown & Official DatePassTicket */}
               {dateTime.enabled && (
-                <div className={cn("w-full rounded-2xl p-3 border shadow-2xs space-y-2 text-left", cardBg)}>
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                      <Calendar className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className={cn("text-[10px] uppercase font-semibold block tracking-wider", isDark ? "text-slate-400" : "text-slate-400")}>
-                        Дата и время встречи
-                      </span>
-                      <span className={cn("text-xs font-bold", isDark ? "text-white" : "text-slate-900")}>
-                        {formatDisplayDate(chosenDate)} в {chosenTime}
-                      </span>
-                    </div>
-                  </div>
+                <div className="w-full space-y-2.5">
+                  {finalScreen.showCountdown !== false && (
+                    <DateCountdown
+                      dateStr={chosenDate || dateTime.date}
+                      timeStr={chosenTime || dateTime.time}
+                      isDark={isDark}
+                    />
+                  )}
+                  {finalScreen.showDateTicket !== false && (
+                    <DatePassTicket
+                      inviteId={invitation.id}
+                      recipientName={general.recipientName}
+                      senderName={general.senderName}
+                      dateDisplay={formatDisplayDate(chosenDate || dateTime.date)}
+                      timeDisplay={chosenTime || dateTime.time}
+                      location={finalScreen.location}
+                      mapLink={finalScreen.mapLink}
+                      activitiesSummary={
+                        customActivityIdea.trim()
+                          ? `${chosenActsNames} (${customActivityIdea.trim()})`
+                          : chosenActsNames
+                      }
+                      isDark={isDark}
+                    />
+                  )}
                 </div>
+              )}
+
+              {/* Interactive Love Coupons Deck */}
+              {coupons.enabled && (
+                <LoveCouponsDeck
+                  coupons={coupons}
+                  claimedIds={claimedCouponIds}
+                  onToggleClaim={(id) => handleToggleCouponClaim(id)}
+                  isDark={isDark}
+                  soundEnabled={general.soundEffects !== false}
+                />
               )}
 
               {/* GUEST ANSWERS CONFIRMATION & DB STATUS CARD (ШАГ 11: PATCH / PUT) */}
@@ -1002,23 +1136,52 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
                   </div>
                 )}
 
-                {/* Warm guest note input */}
-                <div className="pt-2 border-t border-slate-100 space-y-2">
+                {/* Warm guest reaction emojis + note input */}
+                <div className="pt-2 border-t border-slate-100 space-y-2.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-semibold text-slate-600">
+                      Твоя эмоция:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {["🥰", "😭❤️", "🔥", "🥂", "💋"].map((emo) => (
+                        <button
+                          key={emo}
+                          type="button"
+                          onClick={() => {
+                            playSoftPop(general.soundEffects !== false);
+                            setGuestReactionEmoji(emo);
+                            saveGuestAnswers({ reactionEmoji: emo, stage: "guest_note" });
+                          }}
+                          className={cn(
+                            "px-2 py-1 rounded-lg text-sm transition-all cursor-pointer",
+                            guestReactionEmoji === emo
+                              ? "bg-rose-500 text-white scale-110 shadow-xs"
+                              : "bg-slate-100 hover:bg-rose-50"
+                          )}
+                        >
+                          {emo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
                     <MessageSquare className="w-3.5 h-3.5 text-rose-500" />
-                    <span>Оставить теплое сообщение автору (опционально):</span>
+                    <span>Оставить теплое сообщение автору:</span>
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={guestNote}
                       onChange={(e) => setGuestNote(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSendNote()}
                       placeholder="Жду с нетерпением! 🥰"
-                      className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                      className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-400"
                     />
                     <button
+                      type="button"
                       onClick={handleSendNote}
-                      disabled={isSavingNote || !guestNote.trim()}
+                      disabled={isSavingNote || (!guestNote.trim() && !guestReactionEmoji)}
                       className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 transition-colors disabled:opacity-40 flex items-center gap-1 shrink-0 cursor-pointer"
                     >
                       {isSavingNote ? (
@@ -1053,19 +1216,21 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
                       {finalScreen.photoAlbum.length} фото
                     </span>
                   </div>
-                  {/* Horizontal Scroll Carousel */}
+                  {/* Horizontal Scroll Carousel with Lightbox */}
                   <div className="flex gap-2.5 overflow-x-auto no-scrollbar py-1">
                     {finalScreen.photoAlbum.map((photo, i) => (
-                      <div
+                      <button
                         key={i}
-                        className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-slate-200 shadow-2xs group"
+                        type="button"
+                        onClick={() => setLightboxPhoto(photo)}
+                        className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-slate-200 shadow-2xs group cursor-pointer"
                       >
                         <SafeImage
                           src={photo}
                           alt={`Moment #${i + 1}`}
                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1142,6 +1307,27 @@ export function GuestInvitationView({ invitation }: GuestInvitationViewProps) {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Fullscreen Photo Album Lightbox */}
+      {lightboxPhoto && (
+        <div
+          onClick={() => setLightboxPhoto(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxPhoto(null)}
+            className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <SafeImage
+            src={lightboxPhoto}
+            alt="Фото момента"
+            className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl"
+          />
+        </div>
+      )}
     </div>
   );
 }

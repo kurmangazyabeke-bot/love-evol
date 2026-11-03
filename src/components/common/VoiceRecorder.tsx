@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Mic, Square, Play, Pause, Trash2, Check, RefreshCw, Volume2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Mic, Square, Play, Pause, Trash2, Check, Loader2 } from "lucide-react";
+import { uploadFile } from "@/lib/api";
 
 interface VoiceRecorderProps {
   onAudioReady: (audioUrl: string, durationSec: number) => void;
@@ -12,8 +12,11 @@ interface VoiceRecorderProps {
 
 export function VoiceRecorder({ onAudioReady, initialAudioUrl, onClear }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioUrl, setAudioUrl] = useState<string>(initialAudioUrl || "");
+  const [audioUrl, setAudioUrl] = useState<string>(
+    initialAudioUrl && !initialAudioUrl.startsWith("synth:") ? initialAudioUrl : ""
+  );
   const [isPlaying, setIsPlaying] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
 
@@ -21,6 +24,7 @@ export function VoiceRecorder({ onAudioReady, initialAudioUrl, onClear }: VoiceR
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const recordedSecsRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -34,7 +38,6 @@ export function VoiceRecorder({ onAudioReady, initialAudioUrl, onClear }: VoiceR
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
 
-      // Determine supported mime type
       const mimeType = MediaRecorder.isTypeSupported("audio/webm")
         ? "audio/webm"
         : MediaRecorder.isTypeSupported("audio/mp4")
@@ -50,42 +53,55 @@ export function VoiceRecorder({ onAudioReady, initialAudioUrl, onClear }: VoiceR
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+
         const audioBlob = new Blob(audioChunksRef.current, {
           type: mimeType || "audio/webm",
         });
 
-        // Convert to data URL for instant standalone playback without server dependency
+        setIsUploading(true);
+        try {
+          const uploaded = await uploadFile(audioBlob, "audio", `voice-${Date.now()}.webm`);
+          if (uploaded?.url) {
+            setAudioUrl(uploaded.url);
+            onAudioReady(uploaded.url, recordedSecsRef.current);
+            setIsUploading(false);
+            return;
+          }
+        } catch (err) {
+          console.warn("Cloud voice upload fallback to local Data URL:", err);
+        }
+
+        // Fallback to Data URL if offline
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = () => {
-          const base64Data = reader.result as string;
-          setAudioUrl(base64Data);
-          onAudioReady(base64Data, recordingTime);
+          const base64Audio = reader.result as string;
+          setAudioUrl(base64Audio);
+          onAudioReady(base64Audio, recordedSecsRef.current);
+          setIsUploading(false);
         };
-
-        // Stop all audio tracks to release microphone
-        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start(200);
+      mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
+      recordedSecsRef.current = 0;
 
       timerIntervalRef.current = setInterval(() => {
         setRecordingTime((prev) => {
-          if (prev >= 120) {
-            // Auto stop at 2 minutes
-            stopRecording();
-            return prev;
-          }
-          return prev + 1;
+          const next = prev + 1;
+          recordedSecsRef.current = next;
+          return next;
         });
       }, 1000);
     } catch (err) {
-      console.error("Microphone access error:", err);
-      setMicError("Доступ к микрофону отклонен или микрофон не найден в браузере.");
+      console.error("Microphone error:", err);
+      setMicError(
+        "Не удалось получить доступ к микрофону. Разрешите использование микрофона в браузере."
+      );
     }
   };
 
@@ -95,16 +111,23 @@ export function VoiceRecorder({ onAudioReady, initialAudioUrl, onClear }: VoiceR
       setIsRecording(false);
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
     }
   };
 
-  const togglePlayback = () => {
-    if (!audioPlayerRef.current) return;
+  const togglePlay = () => {
+    if (!audioUrl) return;
+    if (!audioPlayerRef.current) {
+      audioPlayerRef.current = new Audio(audioUrl);
+      audioPlayerRef.current.onended = () => setIsPlaying(false);
+    }
+
     if (isPlaying) {
       audioPlayerRef.current.pause();
       setIsPlaying(false);
     } else {
+      audioPlayerRef.current.src = audioUrl;
       audioPlayerRef.current.play();
       setIsPlaying(true);
     }
@@ -113,143 +136,123 @@ export function VoiceRecorder({ onAudioReady, initialAudioUrl, onClear }: VoiceR
   const handleClear = () => {
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
     }
-    setAudioUrl("");
     setIsPlaying(false);
+    setAudioUrl("");
     setRecordingTime(0);
-    if (onClear) onClear();
+    onClear?.();
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  const formatSecs = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const rem = secs % 60;
+    return `${mins}:${rem < 10 ? "0" : ""}${rem}`;
   };
 
   return (
-    <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-50/70 via-slate-50 to-pink-50/60 border border-rose-200/80 space-y-3">
+    <div className="p-4 rounded-2xl border border-rose-200/80 bg-gradient-to-r from-rose-50/50 via-white to-amber-50/30 space-y-3">
       {micError && (
-        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
           {micError}
         </div>
       )}
 
-      {/* STATE 1: NOT RECORDED YET & NOT RECORDING */}
-      {!isRecording && !audioUrl && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-          <div className="space-y-0.5">
-            <h4 className="text-xs font-bold text-slate-800 flex items-center justify-center sm:justify-start gap-1.5">
-              <Mic className="w-3.5 h-3.5 text-rose-500" />
-              <span>Записать искреннее голосовое сообщение</span>
-            </h4>
-            <p className="text-[11px] text-slate-500">
-              Нажмите кнопку, чтобы сказать теплые слова своим голосом (до 2 мин)
-            </p>
+      {isUploading ? (
+        <div className="flex items-center justify-center gap-2.5 py-4 text-xs font-semibold text-rose-700">
+          <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+          <span>Сохраняем голосовое послание в облачную БД Vercel...</span>
+        </div>
+      ) : !isRecording && !audioUrl ? (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-center sm:text-left">
+            <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <Mic className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">
+                Записать живое голосовое послание 🎙️
+              </h4>
+              <p className="text-[11px] text-slate-500">
+                Скажите теплые слова своим голосом — сохраняется прямо в БД Vercel!
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={startRecording}
-            className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold flex items-center gap-2 shadow-xs transition-transform active:scale-95 cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm shadow-rose-500/20 active:scale-95 transition-all cursor-pointer shrink-0"
           >
-            <Mic className="w-4 h-4 animate-pulse" />
+            <Mic className="w-4 h-4" />
             <span>Начать запись</span>
           </button>
         </div>
-      )}
+      ) : null}
 
-      {/* STATE 2: CURRENTLY RECORDING */}
       {isRecording && (
-        <div className="flex items-center justify-between gap-3 p-2 bg-white rounded-xl border border-rose-200 shadow-2xs">
+        <div className="flex items-center justify-between gap-3 py-1 animate-pulse">
           <div className="flex items-center gap-2.5">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+            <span className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
+            <span className="text-xs font-bold text-red-600">
+              Идет запись... {formatSecs(recordingTime)}
             </span>
-            <div className="text-xs font-bold text-rose-600 font-mono tracking-wider">
-              Идет запись... {formatTime(recordingTime)}
-            </div>
-          </div>
-
-          {/* Sound waves animation */}
-          <div className="flex items-center gap-0.5 h-4">
-            <div className="w-1 bg-rose-500 rounded-full animate-bounce [animation-delay:0ms] h-3" />
-            <div className="w-1 bg-rose-500 rounded-full animate-bounce [animation-delay:150ms] h-4" />
-            <div className="w-1 bg-rose-500 rounded-full animate-bounce [animation-delay:300ms] h-2" />
-            <div className="w-1 bg-rose-500 rounded-full animate-bounce [animation-delay:75ms] h-4" />
-            <div className="w-1 bg-rose-500 rounded-full animate-bounce [animation-delay:200ms] h-3" />
           </div>
 
           <button
             type="button"
             onClick={stopRecording}
-            className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
           >
-            <Square className="w-3.5 h-3.5 fill-white" />
-            <span>Готово</span>
+            <Square className="w-3.5 h-3.5 fill-current" />
+            <span>Остановить</span>
           </button>
         </div>
       )}
 
-      {/* STATE 3: RECORDED AUDIO AVAILABLE */}
-      {audioUrl && !isRecording && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <Volume2 className="w-4 h-4 text-rose-500" />
-              <span>Голосовое сообщение записано</span>
-            </div>
-            <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-              ✓ Готово к прослушиванию
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+      {!isRecording && !isUploading && audioUrl && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={togglePlayback}
-              className="w-8 h-8 rounded-full bg-rose-500 text-white flex items-center justify-center hover:bg-rose-600 transition-colors shrink-0 shadow-2xs cursor-pointer"
+              onClick={togglePlay}
+              className="w-9 h-9 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center shadow-xs transition-transform active:scale-95 cursor-pointer"
             >
-              {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
+              {isPlaying ? (
+                <Pause className="w-4 h-4 fill-current" />
+              ) : (
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+              )}
             </button>
-
-            {/* Fake wave bars */}
-            <div className="flex-1 flex items-center gap-0.5 h-6 px-1">
-              {[40, 70, 90, 50, 80, 100, 60, 40, 70, 95, 60, 85, 40, 75, 90, 55, 65, 80, 95, 45].map((h, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "flex-1 rounded-full transition-all duration-200",
-                    isPlaying ? "bg-rose-500" : "bg-slate-300"
-                  )}
-                  style={{ height: `${h}%` }}
-                />
-              ))}
+            <div>
+              <div className="flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-500 stroke-[3]" />
+                <span className="text-xs font-bold text-slate-800">
+                  Голосовое сообщение сохранено!
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Нажмите Play для прослушивания ({formatSecs(recordingTime || 5)})
+              </span>
             </div>
+          </div>
 
-            <audio
-              ref={audioPlayerRef}
-              src={audioUrl}
-              onEnded={() => setIsPlaying(false)}
-              className="hidden"
-            />
-
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={startRecording}
-              title="Перезаписать"
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <Mic className="w-3.5 h-3.5" />
+              <span>Перезаписать</span>
             </button>
-
             <button
               type="button"
               onClick={handleClear}
-              title="Удалить"
-              className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+              title="Удалить запись"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>

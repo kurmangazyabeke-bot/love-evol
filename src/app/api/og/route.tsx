@@ -10,6 +10,11 @@ export async function GET(req: NextRequest) {
     const subtitle =
       searchParams.get("subtitle") ||
       "Я приготовил для нас особенный вечер и очень жду твоего ответа...";
+    const recipient = searchParams.get("recipient") || "";
+    const sender = searchParams.get("sender") || "";
+    const badgeLabel = recipient
+      ? `Личное приглашение для ${recipient}`
+      : "Личное приглашение";
 
     return new ImageResponse(
       (
@@ -74,7 +79,7 @@ export async function GET(req: NextRequest) {
                 fontWeight: 600,
               }}
             >
-              Личное приглашение
+              {badgeLabel}
             </span>
           </div>
 
@@ -147,7 +152,7 @@ export async function GET(req: NextRequest) {
                 color: "#64748b",
               }}
             >
-              <span>Интерактивная открытка</span>
+              <span>{sender ? `С любовью от: ${sender}` : "Интерактивная открытка"}</span>
             </div>
           </div>
         </div>

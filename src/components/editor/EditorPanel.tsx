@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { useInviteStore } from "@/store/useInviteStore";
+import { fetchInvitation } from "@/lib/api";
 import { Step1Invitation } from "./steps/Step1Invitation";
 import { Step2Confirmation } from "./steps/Step2Confirmation";
 import { Step2NoButton } from "./steps/Step2NoButton";
@@ -26,8 +27,34 @@ import {
 import { cn } from "@/lib/utils";
 
 export function EditorPanel() {
-  const { currentStep, setCurrentStep, resetToDefaults } = useInviteStore();
+  const { draftId, currentStep, setCurrentStep, resetToDefaults, loadFromConfig, startNewInvitation } =
+    useInviteStore();
   const topRef = useRef<HTMLDivElement>(null);
+  const [loadingRemote, setLoadingRemote] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get("edit");
+    const dupId = params.get("duplicate");
+    const targetId = editId || dupId;
+    if (!targetId) return;
+
+    setLoadingRemote(true);
+    fetchInvitation(targetId)
+      .then((res) => {
+        if (res?.invitation?.config) {
+          loadFromConfig(
+            res.invitation.config as Record<string, unknown>,
+            editId ? res.invitation.id : null
+          );
+          window.history.replaceState({}, "", "/");
+        }
+      })
+      .catch((err) => console.warn("Failed loading invitation into editor:", err))
+      .finally(() => setLoadingRemote(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const STEPS = [
     {
@@ -99,14 +126,32 @@ export function EditorPanel() {
           </p>
         </div>
 
-        <button
-          onClick={resetToDefaults}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors self-start sm:self-auto cursor-pointer"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Сбросить к начальным</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {draftId && (
+            <button
+              type="button"
+              onClick={startNewInvitation}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer"
+            >
+              <span>+ Создать новую</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={resetToDefaults}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Сбросить</span>
+          </button>
+        </div>
       </div>
+
+      {loadingRemote && (
+        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 animate-pulse">
+          Загружаем выбранное приглашение из базы данных Vercel для редактирования...
+        </div>
+      )}
 
       {/* ================= 2. ПРОГРЕСС-БАР ЗАПОЛНЕНИЯ (1..6) ================= */}
       <div className="space-y-2 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">

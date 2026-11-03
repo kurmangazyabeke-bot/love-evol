@@ -69,17 +69,22 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const title = general.title || "Пойдешь со мной на свидание? 💖";
   const subtitle =
     general.subtitle || "Я приготовил для нас особенный вечер и очень жду твоего ответа...";
-  const coverImageUrl =
-    general.coverImageUrl ||
-    `/api/og?title=${encodeURIComponent(title)}&subtitle=${encodeURIComponent(subtitle)}`;
+  const recipient = general.recipientName || "";
+  const sender = general.senderName || "";
 
-  const ogImageUrl = `/api/og?title=${encodeURIComponent(title)}&subtitle=${encodeURIComponent(subtitle)}`;
+  const ogParams = new URLSearchParams({ title, subtitle });
+  if (recipient) ogParams.set("recipient", recipient);
+  if (sender) ogParams.set("sender", sender);
+
+  const ogImageUrl = `/api/og?${ogParams.toString()}`;
+  const coverImageUrl = general.coverImageUrl || ogImageUrl;
+  const displayTitle = recipient ? `Для ${recipient}: ${title}` : title;
 
   return {
-    title: `${title} | LoveEvol`,
+    title: `${displayTitle} | LoveEvol`,
     description: subtitle,
     openGraph: {
-      title: `💌 ${title}`,
+      title: `💌 ${displayTitle}`,
       description: `${subtitle} — Нажмите, чтобы открыть интерактивное приглашение!`,
       siteName: "LoveEvol",
       locale: "ru_RU",
@@ -89,7 +94,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
           url: ogImageUrl,
           width: 1200,
           height: 630,
-          alt: title,
+          alt: displayTitle,
         },
         ...(coverImageUrl && coverImageUrl !== ogImageUrl
           ? [
@@ -103,7 +108,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     },
     twitter: {
       card: "summary_large_image",
-      title: `💌 ${title}`,
+      title: `💌 ${displayTitle}`,
       description: subtitle,
       images: [ogImageUrl],
     },
